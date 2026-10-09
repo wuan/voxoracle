@@ -16,7 +16,7 @@ text -> audio out.
 
 - Activation word **"Franz"**, detected locally with **openWakeWord**.
 - **Cloud STT and cloud TTS**; **German first**.
-- Python **3.12+**, managed with **uv** (`pyproject.toml` + `uv.lock`).
+- Python **3.13+**, managed with **uv** (`pyproject.toml` + `uv.lock`).
 - Behaviour is specified with **OpenSpec** under `openspec/`.
 - No screen: the CLI (`voxoracle run|ask|doctor|setup`) is the operator surface.
 

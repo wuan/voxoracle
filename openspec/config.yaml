@@ -13,4 +13,4 @@ context: |
   - The wake word "Franz" is detected locally with openWakeWord; STT and TTS are
     cloud services. German comes first.
   - The always-on local path must stay lightweight (Pi 3: 1 GB RAM, Cortex-A53).
-  - Python 3.12+ is managed with uv; behaviour is specified with OpenSpec.
+  - Python 3.13+ is managed with uv; behaviour is specified with OpenSpec.

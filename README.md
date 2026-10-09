@@ -95,7 +95,7 @@ injected so it is testable with fakes and no real hardware.
 
 ## Requirements
 
-- Python **3.12 or higher** (managed by [uv](https://docs.astral.sh/uv/)).
+- Python **3.13 or higher** (managed by [uv](https://docs.astral.sh/uv/)).
 - A running DocOracle server (Python 3.12+, with documentation ingested):
 
   ```bash
@@ -104,7 +104,7 @@ injected so it is testable with fakes and no real hardware.
 
 ## Installation
 
-This project is managed with `uv`, which also provides the Python 3.12+
+This project is managed with `uv`, which also provides the Python 3.13+
 interpreter regardless of the version shipped by the OS.
 
 ```bash

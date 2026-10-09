@@ -17,7 +17,7 @@ all later work builds on the real target.
 
 - **BREAKING (project framing)**: rewrite the README and repository scaffolding
   around a headless, voice-only Raspberry Pi appliance instead of a browser UI.
-- **Project foundation**: a `uv`-managed Python 3.12+ project (`pyproject.toml`,
+- **Project foundation**: a `uv`-managed Python 3.13+ project (`pyproject.toml`,
   `uv.lock`, `src/voxoracle/`), a `typer` CLI (`run`, `ask`, `doctor`, `setup`),
   and the package skeleton mirroring the target architecture.
 - **Quality tooling**: `ruff`, `basedpyright`, `pytest`, `pre-commit`, and a

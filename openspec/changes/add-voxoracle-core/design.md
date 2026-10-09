@@ -12,7 +12,7 @@ comes first. VoxOracle owns no retrieval or LLM logic.
 
 The Pi 3 is constrained (1 GB RAM, Cortex-A53), so the always-on local path (the
 wake word) must stay lightweight and the heavy speech work must be offloaded to
-the cloud. Python 3.12+ is managed with `uv`, which supplies the interpreter
+the cloud. Python 3.13+ is managed with `uv`, which supplies the interpreter
 even when the OS ships an older Python.
 
 This change (WP0) builds the foundation; the capabilities it defines are
@@ -22,7 +22,7 @@ implemented by WP1–WP8.
 
 **Goals:**
 
-- A `uv`-managed Python 3.12+ project with a `src/` layout and a testable
+- A `uv`-managed Python 3.13+ project with a `src/` layout and a testable
   package skeleton that mirrors the target architecture.
 - A `typer` CLI exposing the operator surface: `run`, `ask`, `doctor`, `setup`.
 - Quality gates (`ruff`, `basedpyright`, `pytest`, `pre-commit`) and CI.
@@ -40,7 +40,7 @@ implemented by WP1–WP8.
 
 ### `uv` with a `dependency-groups` dev group
 
-Use `uv` as the package/dependency manager with `requires-python = ">=3.12"` and
+Use `uv` as the package/dependency manager with `requires-python = ">=3.13"` and
 a committed `uv.lock`. Development tooling lives in the standard `dev`
 dependency group so a plain `uv sync` installs both runtime and development
 dependencies, and `uv run <tool>` works without extra flags. CI uses
@@ -84,7 +84,7 @@ the wrong mental model in place, so it is rewritten around the appliance.
 
 - **Wake-word backend on 32-bit ARM** — `onnxruntime` publishes no `armv7`
   wheels and `tflite-runtime`'s armv7 wheels require a newer glibc, so a 32-bit
-  OS cannot run WP3 with Python 3.12. Decision: target **64-bit Raspberry Pi OS
+  OS cannot run WP3 with a modern Python. Decision: target **64-bit Raspberry Pi OS
   (aarch64)**, where openWakeWord's ONNX backend installs cleanly; verified on the
   Pi 3 during WP0.
 - **Cloud STT/TTS vendors are unsettled** — a wrong early choice is costly.

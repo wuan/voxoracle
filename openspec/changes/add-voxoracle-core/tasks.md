@@ -2,11 +2,11 @@
 
 ## 1. WP0 — Project foundation, README fix and OpenSpec init
 
-- [x] 1.1 Create `pyproject.toml` (`requires-python = ">=3.12"`, `typer` runtime dep, `dev` dependency group for `pytest`/`ruff`/`basedpyright`/`pre-commit`) and run `uv sync` to generate `uv.lock`
+- [x] 1.1 Create `pyproject.toml` (`requires-python = ">=3.13"`, `typer` runtime dep, `dev` dependency group for `pytest`/`ruff`/`basedpyright`/`pre-commit`) and run `uv sync` to generate `uv.lock`
 - [x] 1.2 Add the `src/voxoracle/` skeleton (`audio/`, `wakeword/`, `stt/`, `tts/`, `docoracle/`, `session/`, `config/`, `cli.py`, `__main__.py`) with a `typer` CLI exposing `run`, `ask`, `doctor`, `setup` stubs
 - [x] 1.3 Configure `ruff`, `basedpyright`, and `pytest` in `pyproject.toml`; add `.pre-commit-config.yaml`
 - [x] 1.4 Add repository hygiene files: `.gitignore`, `.python-version`, `config.example.yaml`, `LICENSE` (MIT), `AGENTS.md`
-- [x] 1.5 Rewrite `README.md` for the headless appliance design (Pi 3 + Raspberry Pi OS, mic + speaker, wake word "Franz", cloud STT/TTS, German first, DocOracle `POST /ask`, uv + Python 3.12, OpenSpec); remove the browser/Web Speech API framing
+- [x] 1.5 Rewrite `README.md` for the headless appliance design (Pi 3 + Raspberry Pi OS, mic + speaker, wake word "Franz", cloud STT/TTS, German first, DocOracle `POST /ask`, uv + Python 3.13, OpenSpec); remove the browser/Web Speech API framing
 - [x] 1.6 Initialise OpenSpec (`openspec/config.yaml`) and this change with `proposal.md`, `design.md`, `tasks.md`, and capability specs
 - [x] 1.7 Add `.github/workflows/ci.yml` (uv sync, ruff, basedpyright, pytest, openspec validate) and `tests/test_smoke.py`
 - [x] 1.8 Verify: `uv sync`, `uv run pytest`, `uv run ruff check .`, `uv run basedpyright`, `openspec validate --all` all pass
