@@ -40,11 +40,15 @@ class FakeScorer:
         self._score = score
         self._name = name
         self.blocks_seen = 0
+        self.resets = 0
 
     def predict(self, block: np.ndarray) -> dict[str, float]:
         self.blocks_seen += 1
         assert block.size == BLOCK_SAMPLES
         return {self._name: self._score}
+
+    def reset(self) -> None:
+        self.resets += 1
 
 
 class TestOpenWakeWordDetector:
@@ -81,6 +85,12 @@ class TestOpenWakeWordDetector:
         detector.reset()
         assert detector.process(np.zeros(BLOCK_SAMPLES, dtype=np.int16)) is True
         assert scorer.blocks_seen == 1
+
+    def test_reset_also_resets_the_scorer(self) -> None:
+        scorer = FakeScorer(0.9)
+        detector = OpenWakeWordDetector(scorer, "franz", threshold=0.5)
+        detector.reset()
+        assert scorer.resets == 1
 
     def test_invalid_threshold_is_rejected(self) -> None:
         with pytest.raises(ValueError):

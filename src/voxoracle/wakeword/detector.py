@@ -38,6 +38,10 @@ class WakeWordScorer(Protocol):
 
     def predict(self, block: NDArray[np.int16]) -> dict[str, float]: ...
 
+    def reset(self) -> None:
+        """Clear any streaming state held across :meth:`predict` calls."""
+        ...
+
 
 class WakeWordDetector(Protocol):
     """A streaming wake-word detector fed fixed-size audio frames."""
@@ -99,6 +103,10 @@ class OpenWakeWordScorer(WakeWordScorer):
         scores: dict[str, float] = self._model.predict(block)  # pyright: ignore[reportAny]
         return scores
 
+    def reset(self) -> None:
+        """Clear openWakeWord's internal prediction/feature buffer."""
+        self._model.reset()  # pyright: ignore[reportAny]
+
 
 class OpenWakeWordDetector(WakeWordDetector):
     """Streaming detector that buffers frames into openWakeWord blocks.
@@ -148,6 +156,7 @@ class OpenWakeWordDetector(WakeWordDetector):
     def reset(self) -> None:
         self._buffer.clear()
         self._buffered = 0
+        self._scorer.reset()
 
     def _collect(self, count: int) -> NDArray[np.int16]:
         """Pop exactly ``count`` samples from the front of the buffer."""
