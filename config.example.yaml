@@ -40,16 +40,29 @@ wakeword:
   # Detection threshold in [0, 1]; higher reduces false activations.
   threshold: 0.5
 
+# Shared Mistral cloud credentials/endpoint, used by both STT (Voxtral) and TTS.
+# Prefer the environment over this file for the key:
+#   VXORACLE_MISTRAL__API_KEY, or MISTRAL_API_KEY / LLM_API_KEY (the key
+#   DocOracle already uses, so one Mistral key covers everything). Never commit
+#   a key to config.yaml.
+mistral:
+  base_url: https://api.mistral.ai/v1
+  api_key: null
+  timeout: 30
+  retries: 2
+
 stt:
-  # Cloud speech-to-text provider (selected in WP4).
-  provider: null
+  # Cloud speech-to-text provider.
+  provider: mistral
+  # Transcription model (Voxtral Mini Transcribe 2).
+  model: voxtral-mini-latest
   # BCP-47 language tag; German first.
   language: de
   timeout: 30
 
 tts:
-  # Cloud text-to-speech provider (selected in WP5).
-  provider: null
+  # Cloud text-to-speech provider (implemented in WP5).
+  provider: mistral
   # BCP-47 language tag; German first.
   language: de
   # Provider-specific voice identifier.

@@ -147,13 +147,20 @@ wakeword:
   model: franz
   threshold: 0.5               # Detection threshold in [0, 1]
 
+mistral:
+  base_url: https://api.mistral.ai/v1   # Shared by STT and TTS
+  api_key: null                # Prefer the environment; never commit a key
+  timeout: 30
+  retries: 2
+
 stt:
-  provider: null               # Cloud speech-to-text provider
+  provider: mistral            # Cloud speech-to-text provider
+  model: voxtral-mini-latest   # Voxtral Mini Transcribe 2
   language: de                 # BCP-47 tag; German first
   timeout: 30
 
 tts:
-  provider: null               # Cloud text-to-speech provider
+  provider: mistral            # Cloud text-to-speech provider
   language: de
   voice: null
   timeout: 30
@@ -171,6 +178,11 @@ logging:
 `.env` file) rather than in `config.yaml`. Environment overrides use the
 `VXORACLE_` prefix with `__` between sections and keys, e.g.
 `VXORACLE_DOCORACLE__URL`, and the environment wins over `config.yaml`.
+
+Cloud speech uses **Mistral (Voxtral)**: set the key as
+`VXORACLE_MISTRAL__API_KEY`, or reuse the `MISTRAL_API_KEY` / `LLM_API_KEY` that
+DocOracle already authenticates with, so one Mistral key covers STT, TTS and
+DocOracle.
 
 ## Architecture
 

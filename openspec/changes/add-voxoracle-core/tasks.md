@@ -38,11 +38,11 @@
 
 ## 5. WP4 — Cloud speech-to-text
 
-- [ ] 5.1 Define the provider-agnostic `STT` protocol (audio in, transcript out)
-- [ ] 5.2 Implement a configurable cloud STT backend (provider, endpoint, credentials, language)
-- [ ] 5.3 Default to German (`de`) and read credentials from config/env
-- [ ] 5.4 Add retries/timeouts and typed errors
-- [ ] 5.5 Verify a German fixture utterance with a mocked provider
+- [x] 5.1 Define the provider-agnostic `STT` protocol (audio in, transcript out)
+- [x] 5.2 Implement a configurable cloud STT backend (provider, endpoint, credentials, language)
+- [x] 5.3 Default to German (`de`) and read credentials from config/env
+- [x] 5.4 Add retries/timeouts and typed errors
+- [x] 5.5 Verify a German fixture utterance with a mocked provider
 
 ## 6. WP5 — Cloud text-to-speech
 
