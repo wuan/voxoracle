@@ -52,15 +52,15 @@ class WakeWordDetector(Protocol):
 def resolve_model_path(model: str | Path, models_dir: Path) -> Path:
     """Resolve a configured wake-word model to an ``.onnx`` file path.
 
-    ``model`` may be an explicit path (used as-is, and required to exist) or a
-    bare name. A bare name resolves to ``<models_dir>/<name>.onnx``; the special
-    name ``"placeholder"`` resolves to a downloaded/extracted placeholder, and a
-    bare name that does not exist under ``models_dir`` falls back to the bundled
-    placeholder model. Raises :class:`WakeWordModelNotFoundError` when nothing
-    usable is found.
+    An explicit ``.onnx`` path (or an absolute path) is used as-is and must
+    exist. A bare name resolves to ``<models_dir>/<name>.onnx``; if that file is
+    absent the bundled placeholder model is used, so the appliance starts even
+    before a purpose-trained ``franz.onnx`` is installed. Raises
+    :class:`WakeWordModelNotFoundError` only when an explicit path is missing or
+    no placeholder is available.
     """
     candidate = Path(model)
-    if candidate.suffix == ".onnx" or candidate.is_absolute() or candidate.exists():
+    if candidate.suffix == ".onnx" or candidate.is_absolute():
         if candidate.is_file():
             return candidate
         raise WakeWordModelNotFoundError(str(candidate))
@@ -69,10 +69,7 @@ def resolve_model_path(model: str | Path, models_dir: Path) -> Path:
     if named.is_file():
         return named
 
-    if model in ("", "placeholder", PLACEHOLDER_MODEL):
-        return _bundled_placeholder()
-
-    raise WakeWordModelNotFoundError(f"{named} (and no placeholder matched {model!r})")
+    return _bundled_placeholder()
 
 
 def _bundled_placeholder() -> Path:

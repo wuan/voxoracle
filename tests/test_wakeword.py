@@ -104,14 +104,20 @@ class TestResolveModelPath:
         model.write_bytes(b"x")
         assert resolve_model_path("franz", models_dir) == model
 
+    def test_missing_named_model_falls_back_to_placeholder(self, tmp_path: Path) -> None:
+        # The default "franz" name must not prevent the appliance from starting.
+        path = resolve_model_path("franz", tmp_path / "models")
+        assert path.suffix == ".onnx"
+        assert path.is_file()
+
     def test_placeholder_falls_back_to_bundled(self, tmp_path: Path) -> None:
         path = resolve_model_path("placeholder", tmp_path / "models")
         assert path.suffix == ".onnx"
         assert path.is_file()
 
-    def test_unknown_model_raises(self, tmp_path: Path) -> None:
+    def test_explicit_missing_path_raises_despite_placeholder(self, tmp_path: Path) -> None:
         with pytest.raises(WakeWordModelNotFoundError):
-            resolve_model_path("nonexistent", tmp_path / "models")
+            resolve_model_path(tmp_path / "missing.onnx", tmp_path / "models")
 
 
 class TestRealOnnxAdapter:
