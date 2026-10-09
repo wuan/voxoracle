@@ -1,8 +1,8 @@
 """Shared async HTTP client for the Mistral cloud audio APIs.
 
 Both the STT backend (``voxoracle.stt.mistral``) and, later, the TTS backend
-reuse this client for authentication, request timeouts, bounded retries with
-backoff, and a uniform typed-error surface. It knows nothing about individual
+reuse this client for authentication, request timeouts, bounded fixed-delay
+retries, and a uniform typed-error surface. It knows nothing about individual
 endpoints beyond their paths; callers supply the path and payload.
 
 Retry policy: timeouts, connection errors, HTTP 429 and HTTP 5xx are retried up
