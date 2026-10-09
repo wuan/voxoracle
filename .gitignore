@@ -56,6 +56,8 @@ venv.bak/
 *.mp3
 /data/models/
 /data/audio/
+# ...but keep the small synthetic test fixtures under version control
+!tests/fixtures/*.wav
 
 # Logs
 *.log
