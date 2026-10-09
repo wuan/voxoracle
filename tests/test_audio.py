@@ -14,7 +14,11 @@ from voxoracle.audio import (
     record_utterance,
     resample,
 )
-from voxoracle.audio.sounddevice_backend import resolve_device
+from voxoracle.audio.sounddevice_backend import (
+    SoundDeviceInput,
+    _input_device_rate,
+    resolve_device,
+)
 
 FRAME_SAMPLES = 480  # 30 ms at 16 kHz
 SAMPLE_RATE = 16000
@@ -197,3 +201,77 @@ class TestDeviceSelection:
             resolve_device("Nonexistent", "input", self.devices())
         assert excinfo.value.name == "Nonexistent"
         assert excinfo.value.kind == "input"
+
+
+class FakeInputStream:
+    """Minimal fake of sounddevice.InputStream that yields device-rate blocks."""
+
+    def __init__(self, **kwargs: object) -> None:
+        self.blocksize = int(kwargs["blocksize"])  # type: ignore[arg-type]
+        self.kwargs = kwargs
+        self.started = False
+
+    def start(self) -> None:
+        self.started = True
+
+    def read(self, frames: int) -> tuple[np.ndarray, bool]:
+        # A ramp makes the block distinguishable and non-silent.
+        block = np.arange(frames, dtype=np.int16)
+        return block.reshape(-1, 1), False
+
+    def stop(self) -> None:
+        return None
+
+    def close(self) -> None:
+        return None
+
+
+class FakeSoundDevice:
+    """Fake ``sounddevice`` module for exercising SoundDeviceInput without PortAudio."""
+
+    def __init__(self, supported_rates: set[int], default_rate: int) -> None:
+        self._supported_rates = supported_rates
+        self._default_rate = default_rate
+        self.opened_inputs: list[FakeInputStream] = []
+
+    def check_input_settings(
+        self, *, device: object, channels: int, samplerate: int, dtype: str
+    ) -> None:
+        if samplerate not in self._supported_rates:
+            raise RuntimeError("Invalid sample rate")
+
+    def query_devices(self, device: object = None, kind: str | None = None) -> dict[str, object]:
+        return {"default_samplerate": float(self._default_rate)}
+
+    def InputStream(self, **kwargs: object) -> FakeInputStream:  # noqa: N802 - mirrors sounddevice's API
+        stream = FakeInputStream(**kwargs)
+        self.opened_inputs.append(stream)
+        return stream
+
+
+class TestSoundDeviceInput:
+    def test_input_device_rate_kept_when_supported(self, monkeypatch) -> None:
+        sd = FakeSoundDevice(supported_rates={16000}, default_rate=16000)
+        monkeypatch.setattr("voxoracle.audio.sounddevice_backend._sounddevice", lambda: sd)
+        assert _input_device_rate(sd, 1, 16000) == 16000
+
+    def test_input_device_rate_falls_back_to_device_default(self, monkeypatch) -> None:
+        sd = FakeSoundDevice(supported_rates={32000}, default_rate=32000)
+        monkeypatch.setattr("voxoracle.audio.sounddevice_backend._sounddevice", lambda: sd)
+        assert _input_device_rate(sd, 1, 16000) == 32000
+
+    def test_capture_resamples_device_rate_to_target(self, monkeypatch) -> None:
+        sd = FakeSoundDevice(supported_rates={32000}, default_rate=32000)
+        monkeypatch.setattr("voxoracle.audio.sounddevice_backend._sounddevice", lambda: sd)
+        capture = SoundDeviceInput(device=1, sample_rate=16000, frame_samples=480)
+        try:
+            opened = sd.opened_inputs[0]
+            assert opened.kwargs["samplerate"] == 32000  # opened at device rate
+            assert opened.blocksize == 960  # 480 target samples at double rate
+            frame = capture.read_frame()
+        finally:
+            capture.close()
+        assert frame.dtype == np.int16
+        assert frame.size == 480  # exactly frame_samples at the target rate
+        assert capture.sample_rate == 16000
+        assert capture.frame_samples == 480
