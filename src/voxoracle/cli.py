@@ -2,15 +2,21 @@
 
 The CLI is intentionally thin: it exposes the operator surface while the actual
 voice-session behaviour lives in the ``session``/``audio``/``stt``/``tts``/
-``wakeword``/``docoracle`` packages. Commands are stubs until their work package
-lands (see ``openspec/changes/add-voxoracle-core/tasks.md``).
+``wakeword``/``docoracle`` packages. ``ask`` is implemented (WP1); the remaining
+commands are stubs until their work package lands (see
+``openspec/changes/add-voxoracle-core/tasks.md``).
 """
 
 from __future__ import annotations
 
+import asyncio
 from typing import Annotated
 
 import typer
+
+from voxoracle.config import load_settings
+from voxoracle.docoracle.client import DocOracleClient, DocOracleError
+from voxoracle.docoracle.models import AskRequest
 
 app = typer.Typer(
     name="voxoracle",
@@ -31,7 +37,25 @@ def ask(
     question: Annotated[str, typer.Argument(help="Question to send to DocOracle.")],
 ) -> None:
     """Ask DocOracle a question in text mode (no audio)."""
-    typer.echo(f"voxoracle ask is not implemented yet (WP1): {question!r}")
+
+    async def _ask() -> str:
+        settings = load_settings()
+        client = DocOracleClient(
+            base_url=settings.docoracle.url,
+            timeout=settings.docoracle.timeout,
+        )
+        try:
+            response = await client.ask(AskRequest(question=question))
+        finally:
+            await client.aclose()
+        return response.answer
+
+    try:
+        answer = asyncio.run(_ask())
+    except DocOracleError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(answer)
 
 
 @app.command()

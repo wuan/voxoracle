@@ -6,6 +6,9 @@
 #
 # config.yaml is git-ignored. Keep API keys in the environment (or a .env
 # file); never commit credentials directly to config.yaml.
+#
+# Environment overrides use the VXORACLE_ prefix with "__" between sections and
+# keys, e.g. VXORACLE_DOCORACLE__URL. The environment wins over this file.
 
 docoracle:
   # Base URL of the running DocOracle server.
