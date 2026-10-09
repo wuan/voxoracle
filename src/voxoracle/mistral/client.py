@@ -49,6 +49,8 @@ class MistralAudioClient:
         retry_delay: float = 0.5,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
+        if retries < 0:
+            raise ValueError(f"retries must be non-negative, got {retries}")
         self._retries = retries
         self._retry_delay = retry_delay
         self._client = httpx.AsyncClient(

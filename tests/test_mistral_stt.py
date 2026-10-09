@@ -74,11 +74,18 @@ def test_default_language_is_german() -> None:
 
 def test_language_override() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        assert b'name="language"' in request.content
-        assert b"en" in request.content
+        body = request.content
+        assert b'name="language"' in body
+        # language part value is exactly "en" (not merely containing "en")
+        assert b'name="language"\r\n\r\nen\r\n' in body
         return httpx.Response(200, json={"text": "Hello"})
 
     assert transcribe(handler, language="en").language == "en"
+
+
+def test_negative_retries_rejected() -> None:
+    with pytest.raises(ValueError):
+        MistralAudioClient("test-key", retries=-1)
 
 
 def test_empty_transcript_string() -> None:

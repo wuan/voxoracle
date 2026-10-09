@@ -58,6 +58,6 @@ class MistralStatusError(MistralError):
 class MistralResponseError(MistralError):
     """Mistral returned a body that does not match the expected shape."""
 
-    def __init__(self, errors: str) -> None:
-        self.errors = errors
-        super().__init__(f"invalid Mistral response: {errors}")
+    def __init__(self, message: str) -> None:
+        self.message = message
+        super().__init__(f"invalid Mistral response: {message}")
