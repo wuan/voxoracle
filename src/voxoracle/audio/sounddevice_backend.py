@@ -28,6 +28,19 @@ def _sounddevice() -> Any:
     return sounddevice
 
 
+def _input_device_rate(sd: Any, device: int | None, sample_rate: int) -> int:
+    """Return the rate to open an input stream at.
+
+    Prefers ``sample_rate`` when the device supports it; otherwise falls back to
+    the device's default rate so the stream can open, and the caller resamples.
+    """
+    try:
+        sd.check_input_settings(device=device, channels=1, samplerate=sample_rate, dtype="int16")
+    except Exception:  # noqa: BLE001 - any PortAudio rejection means "try the default rate"
+        return int(round(float(sd.query_devices(device, "input")["default_samplerate"])))
+    return sample_rate
+
+
 def list_devices(kind: DeviceKind) -> list[DeviceInfo]:
     """Enumerate input or output devices, marking the system default."""
     sd = _sounddevice()
@@ -57,25 +70,44 @@ def resolve_device(name: str | None, kind: DeviceKind, devices: list[DeviceInfo]
 
     ``None`` or ``"default"`` selects the system default (``None`` passed to
     sounddevice). Any other value is matched case-insensitively against the
-    device names and raises :class:`DeviceNotFoundError` if missing.
+    device names, preferring an exact match, then a prefix, then any device
+    whose name contains the configured value (e.g. ``"Headphones"`` selects
+    ``"bcm2835 Headphones: - (hw:0,0)"``). Raises :class:`DeviceNotFoundError`
+    if nothing matches.
     """
     if name is None or name == "default":
         return None
-    for device in devices:
-        if device.name.lower() == name.lower():
+    needle = name.lower()
+    names = [device.name.lower() for device in devices]
+    for device, device_name in zip(devices, names, strict=True):
+        if device_name == needle:
+            return device.index
+    for device, device_name in zip(devices, names, strict=True):
+        if device_name.startswith(needle):
+            return device.index
+    for device, device_name in zip(devices, names, strict=True):
+        if needle in device_name:
             return device.index
     raise DeviceNotFoundError(name, kind)
 
 
 class SoundDeviceInput:
-    """Blocking 16-bit mono capture from a PortAudio input device."""
+    """Blocking 16-bit mono capture.
+
+    Capture runs at the requested ``sample_rate`` when the device supports it;
+    otherwise it runs at the device's default rate and resamples each frame down
+    to ``sample_rate`` (many USB microphones do not offer 16 kHz natively).
+    """
+
     def __init__(self, device: int | None, sample_rate: int, frame_samples: int) -> None:
         sd = _sounddevice()
+        self._device_rate = _input_device_rate(sd, device, sample_rate)
+        self._read_samples = round(frame_samples * self._device_rate / sample_rate)
         self._stream = sd.InputStream(
             device=device,
             channels=1,
-            samplerate=sample_rate,
-            blocksize=frame_samples,
+            samplerate=self._device_rate,
+            blocksize=self._read_samples,
             dtype="int16",
         )
         self._stream.start()
@@ -91,8 +123,9 @@ class SoundDeviceInput:
         return self._frame_samples
 
     def read_frame(self) -> NDArray[np.int16]:
-        data, _overflowed = self._stream.read(self._frame_samples)
-        return np.asarray(data, dtype=np.int16).reshape(-1)
+        data, _overflowed = self._stream.read(self._read_samples)
+        frame = np.asarray(data, dtype=np.int16).reshape(-1)
+        return resample(frame, self._device_rate, self._sample_rate)
 
     def close(self) -> None:
         self._stream.stop()
@@ -142,7 +175,9 @@ class SoundDeviceBackend:
     def list_devices(self, kind: DeviceKind) -> list[DeviceInfo]:
         return list_devices(kind)
 
-    def open_input(self, device: int | None, sample_rate: int, frame_samples: int) -> SoundDeviceInput:
+    def open_input(
+        self, device: int | None, sample_rate: int, frame_samples: int
+    ) -> SoundDeviceInput:
         return SoundDeviceInput(device, sample_rate, frame_samples)
 
     def open_output(self, device: int | None, sample_rate: int) -> SoundDeviceOutput:

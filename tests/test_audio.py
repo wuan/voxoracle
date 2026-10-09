@@ -145,6 +145,12 @@ class TestDeviceSelection:
         return [
             DeviceInfo(index=1, name="USB Microphone", kind="input", max_input_channels=1),
             DeviceInfo(index=2, name="Built-in Mic", kind="input", max_input_channels=1),
+            DeviceInfo(
+                index=3,
+                name="CD04: USB Audio (hw:1,0)",
+                kind="input",
+                max_input_channels=1,
+            ),
         ]
 
     def test_default_device_resolves_to_none(self) -> None:
@@ -156,6 +162,23 @@ class TestDeviceSelection:
 
     def test_name_match_is_case_insensitive(self) -> None:
         assert resolve_device("built-in mic", "input", self.devices()) == 2
+
+    def test_short_name_matches_full_portaudio_name(self) -> None:
+        assert resolve_device("CD04", "input", self.devices()) == 3
+
+    def test_name_contained_in_full_name_matches(self) -> None:
+        devices = [
+            DeviceInfo(index=0, name="bcm2835 Headphones: - (hw:0,0)", kind="output"),
+            DeviceInfo(index=1, name="sysdefault", kind="output"),
+        ]
+        assert resolve_device("Headphones", "output", devices) == 0
+
+    def test_exact_match_wins_over_prefix(self) -> None:
+        devices = [
+            DeviceInfo(index=1, name="USB Microphone", kind="input", max_input_channels=1),
+            DeviceInfo(index=2, name="USB", kind="input", max_input_channels=1),
+        ]
+        assert resolve_device("USB", "input", devices) == 2
 
     def test_missing_device_raises_typed_error(self) -> None:
         with pytest.raises(DeviceNotFoundError) as excinfo:

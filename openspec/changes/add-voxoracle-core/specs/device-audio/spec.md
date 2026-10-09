@@ -3,7 +3,9 @@
 ### Requirement: Microphone capture at 16 kHz mono
 
 The audio layer SHALL capture microphone input as 16 kHz mono audio suitable for
-speech processing, with a configurable frame size.
+speech processing, with a configurable frame size. When the device does not
+support 16 kHz natively, the layer SHALL capture at a device-supported rate and
+resample to 16 kHz.
 
 #### Scenario: Capture produces 16 kHz mono
 - **WHEN** capture runs with the default settings
@@ -12,6 +14,10 @@ speech processing, with a configurable frame size.
 #### Scenario: Frame size is configurable
 - **WHEN** a frame size in milliseconds is configured
 - **THEN** the capture stream delivers frames of that duration
+
+#### Scenario: Device rate is resampled to 16 kHz
+- **WHEN** the input device does not support 16 kHz natively
+- **THEN** capture runs at a supported device rate and frames are resampled to 16 kHz
 
 ### Requirement: Speaker playback with resampling
 
@@ -34,6 +40,10 @@ configuration, defaulting to the system default devices.
 #### Scenario: Devices come from configuration
 - **WHEN** input and output device names are configured
 - **THEN** capture uses the configured input device and playback uses the configured output device
+
+#### Scenario: Short device name matches the full device name
+- **WHEN** a configured device name is a short form of a device's full name (e.g. `CD04` for `CD04: USB Audio (hw:1,0)`)
+- **THEN** the layer selects that device
 
 #### Scenario: Default devices are used
 - **WHEN** no devices are configured
