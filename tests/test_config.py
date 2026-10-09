@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 from voxoracle.config import DEFAULT_CONFIG_PATH, load_settings
 
 
@@ -70,6 +73,13 @@ def test_environment_beats_dotenv(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("VXORACLE_DOCORACLE__URL", "http://from-env:8000")
     settings = load_settings()
     assert settings.docoracle.url == "http://from-env:8000"
+
+
+def test_invalid_audio_settings_are_rejected(tmp_path) -> None:
+    config = tmp_path / "config.yaml"
+    config.write_text("audio:\n  sample_rate: 0\n", encoding="utf-8")
+    with pytest.raises(ValidationError):
+        load_settings(config)
 
 
 def test_default_path_is_config_yaml(tmp_path, monkeypatch) -> None:

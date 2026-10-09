@@ -14,7 +14,29 @@ import numpy as np
 import webrtcvad  # pyright: ignore[reportMissingTypeStubs]
 from numpy.typing import NDArray
 
+from voxoracle.audio.errors import AudioFormatError
 from voxoracle.audio.protocols import AudioInput, VoiceActivityDetector
+
+# webrtcvad accepts mono 16-bit frames of exactly these durations at these rates.
+WEBRTC_VAD_RATES = (8000, 16000, 32000, 48000)
+WEBRTC_VAD_FRAME_MS = (10, 20, 30)
+
+
+def _validate_vad_frame(frame: bytes, sample_rate: int) -> int:
+    """Return the frame duration in ms, or raise :class:`AudioFormatError`."""
+    if sample_rate not in WEBRTC_VAD_RATES:
+        raise AudioFormatError(
+            f"WebRTC VAD requires a sample rate of "
+            f"{', '.join(str(r) for r in WEBRTC_VAD_RATES)} Hz, got {sample_rate}"
+        )
+    samples = len(frame) // 2  # mono 16-bit PCM
+    frame_ms = round(samples * 1000 / sample_rate)
+    if frame_ms not in WEBRTC_VAD_FRAME_MS:
+        raise AudioFormatError(
+            f"WebRTC VAD requires 10, 20 or 30 ms frames, got ~{frame_ms} ms "
+            f"({samples} samples at {sample_rate} Hz)"
+        )
+    return frame_ms
 
 
 class WebRtcVad(VoiceActivityDetector):
@@ -22,6 +44,8 @@ class WebRtcVad(VoiceActivityDetector):
 
     ``webrtcvad`` requires 16-bit mono PCM frames of exactly 10, 20 or 30 ms at
     8/16/32/48 kHz; the audio layer's default 30 ms / 16 kHz satisfies this.
+    Unsupported inputs raise :class:`~voxoracle.audio.errors.AudioFormatError`
+    instead of the C extension's opaque error.
     """
 
     def __init__(self, aggressiveness: int = 2) -> None:
@@ -30,6 +54,7 @@ class WebRtcVad(VoiceActivityDetector):
         self._vad: Any = webrtcvad.Vad(aggressiveness)  # pyright: ignore[reportAny]
 
     def is_speech(self, frame: bytes, sample_rate: int) -> bool:
+        _validate_vad_frame(frame, sample_rate)
         return bool(self._vad.is_speech(frame, sample_rate))
 
 

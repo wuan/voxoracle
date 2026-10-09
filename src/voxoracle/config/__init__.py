@@ -31,10 +31,10 @@ class DocOracleSettings(BaseModel):
 class AudioSettings(BaseModel):
     input_device: str = "default"
     output_device: str = "default"
-    sample_rate: int = 16000
-    frame_ms: int = 30
+    sample_rate: int = Field(default=16000, gt=0)
+    frame_ms: int = Field(default=30, gt=0)
     vad_aggressiveness: int = Field(default=2, ge=0, le=3)
-    endpoint_silence_ms: int = 700
+    endpoint_silence_ms: int = Field(default=700, gt=0)
 
 
 class WakeWordSettings(BaseModel):

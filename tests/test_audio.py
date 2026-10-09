@@ -139,6 +139,18 @@ class TestWebRtcVad:
         with pytest.raises(ValueError):
             WebRtcVad(aggressiveness=5)
 
+    def test_unsupported_frame_duration_is_rejected(self) -> None:
+        vad = WebRtcVad()
+        # 25 ms at 16 kHz (400 samples) is not a WebRTC VAD frame length
+        bad_frame = np.zeros(400, dtype=np.int16).tobytes()
+        with pytest.raises(AudioFormatError, match="10, 20 or 30 ms"):
+            vad.is_speech(bad_frame, SAMPLE_RATE)
+
+    def test_unsupported_sample_rate_is_rejected(self) -> None:
+        vad = WebRtcVad()
+        with pytest.raises(AudioFormatError, match="sample rate"):
+            vad.is_speech(silence_frame().tobytes(), 44100)
+
 
 class TestDeviceSelection:
     def devices(self) -> list[DeviceInfo]:
