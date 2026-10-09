@@ -4,8 +4,8 @@
 
 VoxOracle is a new repository. The only existing content is a README describing
 a browser-based UI, which contradicts the agreed appliance design. The target is
-a Raspberry Pi 3 running Debian-based Raspberry Pi OS, headless, with a
-microphone and a speaker. It listens for the wake word "Franz" locally, captures
+a Raspberry Pi 3 running 64-bit (aarch64) Debian-based Raspberry Pi OS,
+headless, with a microphone and a speaker. It listens for the wake word "Franz" locally, captures
 a question, transcribes it with a cloud STT service, sends it to DocOracle
 `POST /ask`, and speaks the grounded answer with a cloud TTS service. German
 comes first. VoxOracle owns no retrieval or LLM logic.
@@ -82,9 +82,11 @@ the wrong mental model in place, so it is rewritten around the appliance.
 
 ## Risks / Trade-offs
 
-- **`onnxruntime` on armv7/32-bit Raspberry Pi OS** — PyPI wheels are limited.
-  Mitigation: use openWakeWord's TFLite backend, or 64-bit Raspberry Pi OS; WP3
-  must verify on real hardware.
+- **Wake-word backend on 32-bit ARM** — `onnxruntime` publishes no `armv7`
+  wheels and `tflite-runtime`'s armv7 wheels require a newer glibc, so a 32-bit
+  OS cannot run WP3 with Python 3.12. Decision: target **64-bit Raspberry Pi OS
+  (aarch64)**, where openWakeWord's ONNX backend installs cleanly; verified on the
+  Pi 3 during WP0.
 - **Cloud STT/TTS vendors are unsettled** — a wrong early choice is costly.
   Mitigation: keep providers behind protocols and defer the vendor decision to
   the WP4/WP5 design documents.
@@ -111,5 +113,6 @@ README; no data or public interface exists yet.
 
 - Which cloud STT provider (WP4) and cloud TTS provider (WP5)? Deferred to their
   design documents.
-- Which wake-word model/backend on the target Pi (TFLite vs ONNX, 32- vs 64-bit
-  OS)? Resolved during WP3 on real hardware.
+- Which wake-word model on the target Pi? Resolved to openWakeWord's ONNX
+  backend on 64-bit Raspberry Pi OS (aarch64); the "Franz" model is selected in
+  WP3.

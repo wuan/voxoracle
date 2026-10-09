@@ -60,16 +60,19 @@ the two projects can evolve independently.
 |---|---|
 | Hardware | Raspberry Pi 3 (1 GB RAM, Cortex-A53) |
 | Peripherals | USB microphone + speaker (ALSA/PipeWire) |
-| OS | Debian-based Raspberry Pi OS |
+| OS | Debian-based Raspberry Pi OS, 64-bit (aarch64) |
 | Display | None — headless, voice-only |
 | Network | A reachable DocOracle server (localhost or LAN) |
 
 ### Notes for the Pi 3
 
+- Run a **64-bit (aarch64) Debian-based Raspberry Pi OS**. The wake word uses
+  openWakeWord's ONNX backend, and `onnxruntime` publishes no 32-bit `armv7`
+  wheels; the Pi 3's Cortex-A53 supports 64-bit.
 - Keep the always-on local path (the wake word) lightweight; STT and TTS are
   offloaded to the cloud.
-- `onnxruntime` wheels are limited on 32-bit ARM. Prefer openWakeWord's TFLite
-  backend, or install 64-bit Raspberry Pi OS, and verify on real hardware.
+- Verify audio and detection behavior on real hardware before relying on a
+  backend.
 
 ## Architecture
 

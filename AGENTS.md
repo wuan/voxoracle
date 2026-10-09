@@ -86,9 +86,9 @@ When writing tests:
 
 - The Pi 3 has 1 GB RAM and a Cortex-A53 CPU. Keep the always-on local path
   (wake word) lightweight; STT/TTS are offloaded to the cloud.
-- `onnxruntime` wheels are limited on 32-bit ARM. Prefer openWakeWord's TFLite
-  backend, or 64-bit Raspberry Pi OS; verify on real hardware before relying on a
-  backend.
+- Run 64-bit (aarch64) Raspberry Pi OS: `onnxruntime` ships no 32-bit `armv7`
+  wheels, so openWakeWord's ONNX backend needs 64-bit. Verify on real hardware
+  before relying on a backend.
 
 ## 6. Conventional Commits
 

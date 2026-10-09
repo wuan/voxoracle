@@ -10,6 +10,7 @@
 - [x] 1.6 Initialise OpenSpec (`openspec/config.yaml`) and this change with `proposal.md`, `design.md`, `tasks.md`, and capability specs
 - [x] 1.7 Add `.github/workflows/ci.yml` (uv sync, ruff, basedpyright, pytest, openspec validate) and `tests/test_smoke.py`
 - [x] 1.8 Verify: `uv sync`, `uv run pytest`, `uv run ruff check .`, `uv run basedpyright`, `openspec validate --all` all pass
+- [x] 1.9 Verify WP0 on the target (64-bit Raspberry Pi OS, aarch64): `uv sync`, `uv run pytest`, `uv run ruff check .`, and `uv run basedpyright` pass on the Pi 3
 
 ## 2. WP1 — DocOracle API client
 
@@ -32,7 +33,7 @@
 - [ ] 4.1 Integrate openWakeWord behind a `WakeWordDetector` protocol and load the "Franz" model
 - [ ] 4.2 Make the detection threshold configurable
 - [ ] 4.3 Emit a trigger event to the session loop; keep the always-on path lightweight
-- [ ] 4.4 Select and document the runtime backend (TFLite vs ONNX) for armv7 / 64-bit Pi OS and verify on real hardware
+- [ ] 4.4 Use openWakeWord's ONNX backend on 64-bit Raspberry Pi OS (aarch64) and verify detection on the Pi 3
 - [ ] 4.5 Verify detection against fixture audio and document false-activation tuning
 
 ## 5. WP4 — Cloud speech-to-text

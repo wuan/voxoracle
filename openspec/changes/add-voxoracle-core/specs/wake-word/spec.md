@@ -36,14 +36,15 @@ The always-on wake-word path MUST remain lightweight enough for the Raspberry Pi
 - **WHEN** the device is idle and only listening for the wake word
 - **THEN** STT, TTS, and DocOracle are not invoked
 
-### Requirement: Selectable runtime backend
+### Requirement: Runtime backend
 
-The wake-word runtime MUST support openWakeWord's TFLite and ONNX inference
-backends so it can run on 32-bit or 64-bit Raspberry Pi OS.
+The wake-word runtime MUST use openWakeWord's ONNX inference backend on the
+target 64-bit Raspberry Pi OS (aarch64), where `onnxruntime` is available; the
+inference backend MUST sit behind the detector protocol so it stays swappable.
 
-#### Scenario: TFLite backend on 32-bit OS
-- **WHEN** the runtime backend is TFLite
-- **THEN** detection uses `tflite-runtime` without requiring `onnxruntime`
+#### Scenario: ONNX backend on the target
+- **WHEN** the wake-word detector runs on 64-bit Raspberry Pi OS
+- **THEN** detection uses the `onnxruntime` ONNX backend
 
 #### Scenario: Detection verified on target hardware
 - **WHEN** the activation word "Franz" is spoken to the target device
