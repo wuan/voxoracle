@@ -101,6 +101,10 @@ class DocOracleClient:
                 last_error = DocOracleTimeoutError(f"DocOracle timed out at {url}: {exc}")
             except httpx.ConnectError as exc:
                 last_error = DocOracleConnectionError(f"cannot reach DocOracle at {url}: {exc}")
+            except httpx.TransportError as exc:
+                last_error = DocOracleConnectionError(
+                    f"transport error talking to DocOracle at {url}: {exc}"
+                )
             else:
                 if response.status_code >= 500:
                     last_error = DocOracleStatusError(response.status_code, response.text)

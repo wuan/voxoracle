@@ -53,6 +53,25 @@ def test_unknown_keys_are_ignored(tmp_path) -> None:
     assert settings.docoracle.url == "http://ok:8000"
 
 
+def test_dotenv_file_is_loaded(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text(
+        "VXORACLE_DOCORACLE__URL=http://from-dotenv:7000\n", encoding="utf-8"
+    )
+    settings = load_settings()
+    assert settings.docoracle.url == "http://from-dotenv:7000"
+
+
+def test_environment_beats_dotenv(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / ".env").write_text(
+        "VXORACLE_DOCORACLE__URL=http://from-dotenv:7000\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("VXORACLE_DOCORACLE__URL", "http://from-env:8000")
+    settings = load_settings()
+    assert settings.docoracle.url == "http://from-env:8000"
+
+
 def test_default_path_is_config_yaml(tmp_path, monkeypatch) -> None:
     (tmp_path / "config.yaml").write_text("logging:\n  level: DEBUG\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)

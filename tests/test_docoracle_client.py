@@ -109,8 +109,13 @@ def test_health_and_info() -> None:
             lambda request: httpx.Response(
                 200,
                 json=(
-                    {"total_chunks": 10, "semantic_chunks": 4, "bm25_chunks": 6,
-                     "retrieval_mode": "hybrid", "store_path": "/tmp/store"}
+                    {
+                        "total_chunks": 10,
+                        "semantic_chunks": 4,
+                        "bm25_chunks": 6,
+                        "retrieval_mode": "hybrid",
+                        "store_path": "/tmp/store",
+                    }
                     if request.url.path == "/info"
                     else {"status": "healthy"}
                 ),
@@ -242,6 +247,22 @@ def test_http_5xx_raises_status_error_after_retries() -> None:
         ask_via(handler)
     assert excinfo.value.status_code == 500
     assert calls == 1  # ask_via retries=0
+
+
+def test_other_transport_errors_are_typed() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadError("connection reset", request=request)
+
+    with pytest.raises(DocOracleConnectionError):
+        ask_via(handler)
+
+
+def test_remote_protocol_error_is_typed() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.RemoteProtocolError("server disconnected", request=request)
+
+    with pytest.raises(DocOracleConnectionError):
+        ask_via(handler)
 
 
 def test_http_4xx_raises_immediately() -> None:
