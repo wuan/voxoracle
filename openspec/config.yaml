@@ -1,0 +1,16 @@
+schema: spec-driven
+
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+context: |
+  VoxOracle is a headless, voice-only appliance frontend for DocOracle, running
+  on a Raspberry Pi 3 with Debian-based Raspberry Pi OS, a microphone and a
+  speaker. It owns no retrieval or LLM logic: audio in -> text -> DocOracle
+  POST /ask -> text -> audio out.
+
+  Constraints an agent cannot infer from the code:
+  - The device has no screen; the CLI is the operator surface.
+  - The wake word "Franz" is detected locally with openWakeWord; STT and TTS are
+    cloud services. German comes first.
+  - The always-on local path must stay lightweight (Pi 3: 1 GB RAM, Cortex-A53).
+  - Python 3.13+ is managed with uv; behaviour is specified with OpenSpec.
