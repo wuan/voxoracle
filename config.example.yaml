@@ -24,6 +24,10 @@ audio:
   sample_rate: 16000
   # Audio frame size in milliseconds.
   frame_ms: 30
+  # WebRTC VAD aggressiveness in [0, 3]; higher filters more non-speech.
+  vad_aggressiveness: 2
+  # Silence after speech, in milliseconds, that ends an utterance.
+  endpoint_silence_ms: 700
 
 wakeword:
   # Local wake-word engine and activation model.

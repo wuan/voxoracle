@@ -33,6 +33,8 @@ class AudioSettings(BaseModel):
     output_device: str = "default"
     sample_rate: int = 16000
     frame_ms: int = 30
+    vad_aggressiveness: int = Field(default=2, ge=0, le=3)
+    endpoint_silence_ms: int = 700
 
 
 class WakeWordSettings(BaseModel):
