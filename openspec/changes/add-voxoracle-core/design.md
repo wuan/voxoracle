@@ -113,7 +113,8 @@ utterance as a 16-bit mono WAV multipart form with a `language` field
 
 Both STT and TTS share a single authenticated client
 (`voxoracle.mistral.MistralAudioClient`) that owns the base URL, bearer
-authentication, timeout, bounded fixed-delay retries, and a typed-error
+authentication, timeout, bounded exponential-backoff retries (capped, with
+jitter, honoring a numeric `Retry-After` on 429/503), and a typed-error
 surface (authentication, rate-limit, server, malformed, timeout, connection).
 The backends implement their own protocols on top of it, so a different
 provider later means a new backend, not a new transport stack.

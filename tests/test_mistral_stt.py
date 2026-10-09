@@ -18,6 +18,7 @@ from voxoracle.mistral import (
     MistralStatusError,
     MistralTimeoutError,
 )
+from voxoracle.mistral import client as mistral_client
 from voxoracle.stt import MistralTranscriber
 from voxoracle.stt.protocol import AudioClip
 
@@ -204,3 +205,90 @@ def test_retry_then_success() -> None:
 
     assert transcribe(handler, retries=2).text == "ok"
     assert calls == 3
+
+
+def recording_sleep(monkeypatch) -> list[float]:
+    delays: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        delays.append(seconds)
+
+    monkeypatch.setattr(mistral_client, "asyncio", _FakeAsyncio(fake_sleep))
+    return delays
+
+
+class _FakeAsyncio:
+    """Stand-in exposing only ``sleep`` for the client's retry loop."""
+
+    def __init__(self, sleep) -> None:
+        self.sleep = sleep
+
+
+def failing_client(monkeypatch, handler, *, retries, **kwargs) -> list[float]:
+    delays = recording_sleep(monkeypatch)
+
+    async def scenario() -> None:
+        client = MistralAudioClient(
+            "test-key",
+            retries=retries,
+            jitter=0.0,
+            transport=httpx.MockTransport(handler),
+            **kwargs,
+        )
+        try:
+            with pytest.raises(Exception):  # noqa: B017 - any typed failure
+                await client.post_json("/x", json={})
+        finally:
+            await client.aclose()
+
+    asyncio.run(scenario())
+    return delays
+
+
+def test_exponential_backoff_schedule(monkeypatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503, text="unavailable")
+
+    delays = failing_client(
+        monkeypatch, handler, retries=3, retry_delay=0.5, backoff_factor=2.0, max_retry_delay=10.0
+    )
+    # attempt 0 -> 0.5, attempt 1 -> 1.0, attempt 2 -> 2.0 (jitter disabled)
+    assert delays == [0.5, 1.0, 2.0]
+
+
+def test_backoff_is_capped(monkeypatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(500, text="boom")
+
+    delays = failing_client(
+        monkeypatch, handler, retries=3, retry_delay=1.0, backoff_factor=10.0, max_retry_delay=5.0
+    )
+    assert delays == [1.0, 5.0, 5.0]
+
+
+def test_retry_after_header_is_honored_on_429(monkeypatch) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(429, text="slow down", headers={"Retry-After": "7"})
+
+    delays = failing_client(monkeypatch, handler, retries=1, retry_delay=0.5, max_retry_delay=30.0)
+    assert delays == [7.0]  # server hint wins over the smaller backoff
+
+
+def test_http_408_is_retried(monkeypatch) -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(408, text="timeout")
+
+    delays = failing_client(monkeypatch, handler, retries=2, retry_delay=0.1)
+    assert calls == 3
+    assert len(delays) == 2
+
+
+def test_clip_rejects_non_mono_and_wrong_dtype() -> None:
+    with pytest.raises(ValueError):
+        AudioClip(samples=np.zeros((2, 100), dtype=np.int16), sample_rate=SAMPLE_RATE)
+    with pytest.raises(ValueError):
+        AudioClip(samples=np.zeros(100, dtype=np.float32), sample_rate=SAMPLE_RATE)

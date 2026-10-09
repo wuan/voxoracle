@@ -1,18 +1,22 @@
 """Shared async HTTP client for the Mistral cloud audio APIs.
 
 Both the STT backend (``voxoracle.stt.mistral``) and, later, the TTS backend
-reuse this client for authentication, request timeouts, bounded fixed-delay
-retries, and a uniform typed-error surface. It knows nothing about individual
-endpoints beyond their paths; callers supply the path and payload.
+reuse this client for authentication, request timeouts, bounded exponential
+backoff retries, and a uniform typed-error surface. It knows nothing about
+individual endpoints beyond their paths; callers supply the path and payload.
 
-Retry policy: timeouts, connection errors, HTTP 429 and HTTP 5xx are retried up
-to ``retries`` extra times with a fixed ``retry_delay``. Authentication and other
-client errors (4xx) fail immediately.
+Retry policy: timeouts, connection errors, HTTP 408, HTTP 429 and HTTP 5xx are
+retried up to ``retries`` extra times. Delays grow exponentially
+(``retry_delay * backoff_factor**attempt``, capped at ``max_retry_delay``) with
+optional jitter, and a numeric ``Retry-After`` header on 429/503 is honored when
+it exceeds the computed delay. Authentication and other client errors (4xx) fail
+immediately.
 """
 
 from __future__ import annotations
 
 import asyncio
+import random
 from collections.abc import Mapping
 from typing import Any
 
@@ -47,12 +51,24 @@ class MistralAudioClient:
         *,
         retries: int = 2,
         retry_delay: float = 0.5,
+        backoff_factor: float = 2.0,
+        max_retry_delay: float = 30.0,
+        jitter: float = 0.1,
         transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         if retries < 0:
             raise ValueError(f"retries must be non-negative, got {retries}")
+        if retry_delay < 0:
+            raise ValueError(f"retry_delay must be non-negative, got {retry_delay}")
+        if backoff_factor < 1:
+            raise ValueError(f"backoff_factor must be >= 1, got {backoff_factor}")
+        if not 0.0 <= jitter <= 1.0:
+            raise ValueError(f"jitter must be in [0, 1], got {jitter}")
         self._retries = retries
         self._retry_delay = retry_delay
+        self._backoff_factor = backoff_factor
+        self._max_retry_delay = max_retry_delay
+        self._jitter = jitter
         self._client = httpx.AsyncClient(
             base_url=base_url,
             timeout=httpx.Timeout(timeout),
@@ -77,6 +93,29 @@ class MistralAudioClient:
         """POST a JSON body and return the parsed JSON response."""
         return await self._request("POST", path, json=dict(json))
 
+    def _delay_for(self, attempt: int, retry_after: float | None) -> float:
+        """Delay before the next attempt: exponential backoff, capped, with jitter.
+
+        ``retry_after`` (from a 429/503 header) is honored as a lower bound.
+        """
+        base = self._retry_delay * self._backoff_factor**attempt
+        delay = min(base, self._max_retry_delay)
+        if retry_after is not None:
+            delay = max(delay, min(retry_after, self._max_retry_delay))
+        if self._jitter > 0:
+            delay *= 1 - self._jitter * random.random()
+        return delay
+
+    @staticmethod
+    def _retry_after_seconds(response: httpx.Response) -> float | None:
+        raw = response.headers.get("Retry-After")
+        if raw is None:
+            return None
+        try:
+            return max(0.0, float(raw))
+        except ValueError:
+            return None  # HTTP-date form is not handled; fall back to backoff
+
     async def _request(
         self,
         method: str,
@@ -88,6 +127,7 @@ class MistralAudioClient:
     ) -> Any:
         last_error: MistralError | None = None
         for attempt in range(self._retries + 1):
+            retry_after: float | None = None
             try:
                 response = await self._client.request(
                     method,
@@ -101,20 +141,25 @@ class MistralAudioClient:
             except httpx.TransportError as exc:
                 last_error = MistralConnectionError(f"cannot reach Mistral at {path}: {exc}")
             else:
-                if response.status_code in (401, 403):
-                    raise MistralAuthError(response.status_code, response.text)
-                if response.status_code == 429:
+                status = response.status_code
+                if status in (401, 403):
+                    raise MistralAuthError(status, response.text)
+                if status == 429:
                     last_error = MistralRateLimitError(response.text)
-                elif response.status_code >= 500:
-                    last_error = MistralServerError(response.status_code, response.text)
-                elif response.status_code >= 400:
-                    raise MistralStatusError(response.status_code, response.text)
+                    retry_after = self._retry_after_seconds(response)
+                elif status >= 500:
+                    last_error = MistralServerError(status, response.text)
+                    retry_after = self._retry_after_seconds(response)
+                elif status == 408:
+                    last_error = MistralStatusError(status, response.text)
+                elif status >= 400:
+                    raise MistralStatusError(status, response.text)
                 else:
                     try:
                         return response.json()
                     except ValueError as exc:
                         raise MistralResponseError(str(exc)) from exc
-            if attempt < self._retries and self._retry_delay > 0:
-                await asyncio.sleep(self._retry_delay)
+            if attempt < self._retries:
+                await asyncio.sleep(self._delay_for(attempt, retry_after))
         assert last_error is not None
         raise last_error

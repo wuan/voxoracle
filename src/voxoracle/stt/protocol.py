@@ -24,6 +24,10 @@ class AudioClip:
     def __post_init__(self) -> None:
         if self.sample_rate <= 0:
             raise ValueError(f"sample_rate must be positive, got {self.sample_rate}")
+        if self.samples.ndim != 1:
+            raise ValueError(f"samples must be mono (1-D), got shape {self.samples.shape}")
+        if self.samples.dtype != np.int16:
+            raise ValueError(f"samples must be int16, got dtype {self.samples.dtype}")
 
 
 @dataclass(frozen=True)
