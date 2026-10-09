@@ -1,0 +1,51 @@
+repos:
+  # General file hygiene
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  # Ruff - linting (with auto-fix) and formatting (replaces black)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.10
+    hooks:
+      - id: ruff
+        args: [--fix, --unsafe-fixes]
+      - id: ruff-format
+
+  # BasedPyright - strict type checking (uses the project environment)
+  - repo: local
+    hooks:
+      - id: basedpyright
+        name: basedpyright
+        entry: basedpyright
+        language: system
+        types_or: [python, pyi]
+        exclude: ^tests/
+
+  # pytest
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: python -m pytest
+        language: system
+        types: [python]
+        args: [tests/, --tb=short]
+        pass_filenames: false
+
+  # OpenSpec - validate change proposals and specs
+  - repo: local
+    hooks:
+      - id: openspec-validate
+        name: openspec validate
+        entry: openspec validate --all
+        language: system
+        pass_filenames: false
+        files: ^openspec/

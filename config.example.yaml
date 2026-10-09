@@ -1,0 +1,58 @@
+# VoxOracle example configuration.
+#
+# Copy this file to config.yaml and adjust it for your device:
+#
+#   cp config.example.yaml config.yaml
+#
+# config.yaml is git-ignored. Keep API keys in the environment (or a .env
+# file); never commit credentials directly to config.yaml.
+
+docoracle:
+  # Base URL of the running DocOracle server.
+  url: http://localhost:8000
+  # Seconds to wait for POST /ask before timing out.
+  timeout: 60
+
+audio:
+  # ALSA/PipeWire device names, or "default" for the system default device.
+  input_device: default
+  output_device: default
+  # Capture sample rate in Hz (16 kHz mono is required for speech).
+  sample_rate: 16000
+  # Audio frame size in milliseconds.
+  frame_ms: 30
+
+wakeword:
+  # Local wake-word engine and activation model.
+  engine: openwakeword
+  model: franz
+  # Detection threshold in [0, 1]; higher reduces false activations.
+  threshold: 0.5
+
+stt:
+  # Cloud speech-to-text provider (selected in WP4).
+  provider: null
+  # BCP-47 language tag; German first.
+  language: de
+  timeout: 30
+
+tts:
+  # Cloud text-to-speech provider (selected in WP5).
+  provider: null
+  # BCP-47 language tag; German first.
+  language: de
+  # Provider-specific voice identifier.
+  voice: null
+  timeout: 30
+
+session:
+  # Maximum length of a single spoken question, in seconds.
+  max_record_seconds: 15
+  # Keep listening briefly after an answer for a follow-up question.
+  follow_up: false
+  # Stop playback when the wake word or speech is detected.
+  barge_in: true
+
+logging:
+  # One of: DEBUG, INFO, WARNING, ERROR, CRITICAL.
+  level: INFO
