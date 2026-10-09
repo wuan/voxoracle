@@ -1,58 +1,62 @@
 # VoxOracle
 
-The voice frontend for [DocOracle](https://github.com/wuan/docoracle) — a
-**headless, voice-only appliance** that answers spoken questions about your
-documentation.
+The voice frontend for [DocOracle](https://github.com/wuan/docoracle) — ask your
+documentation out loud.
 
-VoxOracle runs on a small computer (a Raspberry Pi 3) with a microphone and a
-speaker. It listens for its activation word, **"Franz"**, captures the spoken
-question, sends it to DocOracle's `POST /ask` endpoint, and speaks the grounded
-answer back through the speaker. There is no screen: it is a self-contained
-voice appliance.
+VoxOracle puts a spoken conversational interface on top of DocOracle, an
+experimental RAG/chatbot solution that provides natural-language access to
+static Antora/AsciiDoc documentation. Speak your question; VoxOracle transcribes
+it, sends it to DocOracle's `/ask` API, and reads the answer back — with the
+citations available on request.
 
-> Named in the spirit of its parent: if DocOracle is the oracle of your docs,
-> VoxOracle is its voice.
+VoxOracle runs as a **headless, voice-only appliance** on a Raspberry Pi 3 with
+a microphone and a speaker. There is no screen and no browser: you activate it
+with the wake word **"Franz"**, and it listens, answers, and listens again.
+
+Named in the spirit of its parent: if DocOracle is the oracle of your docs,
+VoxOracle is its voice.
 
 ## How it works
 
 ```
-You speak "Franz ..."
-        │
-        ▼
-   Wake word (openWakeWord, local)          "Franz"
-        │
-        ▼
-   Record question (mic, 16 kHz mono)
-        │
-        ▼
-   Speech-to-text (cloud, German)           question text
-        │
-        ▼
-   DocOracle  POST /ask                     grounded answer + citations
-        │
-        ▼
-   Text-to-speech (cloud, German)
-        │
-        ▼
-   Speak answer (speaker)  ──▶  back to listening
+You (speech) ─▶ Wake word "Franz" (local) ─▶ Speech-to-Text (cloud) ─▶ DocOracle /ask ─▶ LLM + RAG retrieval
+                                                                                                   │
+You (hearing) ◀─ Text-to-Speech (cloud) ◀─ Answer + citations ◀─────────────────────────────────────┘
 ```
+
+1. Capture — openWakeWord detects the wake word "Franz" locally (no cloud
+   round-trip), and the appliance records the question from its microphone.
+2. Ask — the transcribed question is sent to a running DocOracle server via its
+   HTTP API (`POST /ask`).
+3. Retrieve & answer — DocOracle performs hybrid retrieval (semantic FAISS +
+   German-aware BM25, fused via RRF) and generates a grounded, cited answer.
+4. Speak — the answer is read back over the speaker via cloud text-to-speech,
+   with barge-in to stop playback when you speak again.
 
 VoxOracle owns **no retrieval or LLM logic**. It is a presentation and
 interaction layer: audio in → text → DocOracle → text → audio out. All
-answering, retrieval, citation and filtering behaviour comes from DocOracle, so
-the two projects can evolve independently.
+answering, retrieval, citation, and filtering behavior comes from DocOracle,
+which guarantees the two projects can evolve independently.
 
 ## Features
 
-- **Hands-free activation** with the wake word **"Franz"**, detected locally
-  using [openWakeWord](https://github.com/dscripka/openWakeWord).
-- **Cloud STT and cloud TTS** with swappable providers behind protocols;
-  **German first**.
-- **Grounded answers** spoken directly from DocOracle's `POST /ask` response.
-- **Barge-in**: the wake word during playback stops the speaker.
-- **Headless**: no display or browser; the CLI is the operator surface.
-- **Testable without hardware**: audio I/O and providers are injected, so the
-  full session can be exercised with fakes in CI.
+- **Hands-free activation** — the wake word "Franz", detected locally using
+  [openWakeWord](https://github.com/dscripka/openWakeWord); no buttons, no
+  screen, no browser.
+- **Grounded answers** — every spoken answer carries DocOracle's citations
+  (`module:pages:page#section`); the sources can be read back on request.
+- **Filtering by voice** — restrict questions to a module, component, or
+  version.
+- **Conversation history** — local, per-device history of questions and
+  answers.
+- **Backend-agnostic** — works with either DocOracle answer backend (engine or
+  agent).
+- **Pluggable STT/TTS** — cloud speech providers behind protocols; **German
+  first**.
+- **Fallback text mode** — `voxoracle ask "…"` types the question instead of
+  talking when speech isn't practical.
+- **Testable without hardware** — audio I/O and providers are injected, so the
+  session runs with fakes in CI.
 
 ## Hardware and OS
 
@@ -74,6 +78,97 @@ the two projects can evolve independently.
 - Verify audio and detection behavior on real hardware before relying on a
   backend.
 
+The wake word, STT and TTS backends sit behind protocols, so providers are
+swappable at runtime.
+
+## Prerequisites
+
+- A Raspberry Pi 3 running 64-bit (aarch64) Debian-based Raspberry Pi OS, with
+  a USB microphone and a speaker.
+- A running DocOracle server (Python 3.12+, with documentation ingested):
+
+  ```bash
+  docoracle serve --host 0.0.0.0 --port 8000
+  ```
+
+- [uv](https://docs.astral.sh/uv/) for installing the project; it provides the
+  Python 3.13+ interpreter regardless of the version shipped by the OS.
+
+## Installation
+
+```bash
+# Install uv (if not already present)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Install the project and its development dependencies
+uv sync
+
+# Prepare the appliance (wake-word models, device checks)
+uv run voxoracle setup
+```
+
+## Usage
+
+The CLI is the operator surface of the headless device:
+
+```bash
+voxoracle run      # run the always-on voice session loop
+voxoracle ask "…"  # ask DocOracle a question in text mode (no audio)
+voxoracle doctor   # check devices, models, configuration and connectivity
+voxoracle setup    # download wake-word models and prepare the device
+```
+
+> The commands exist as stubs and are being implemented work-package by
+> work-package; see `openspec/changes/add-voxoracle-core/tasks.md` for the
+> roadmap.
+
+## Configuration
+
+VoxOracle reads its settings from `config.yaml`. Start from the example:
+
+```bash
+cp config.example.yaml config.yaml
+```
+
+```yaml
+docoracle:
+  url: http://localhost:8000   # DocOracle server
+  timeout: 60                  # Seconds to wait for POST /ask
+
+audio:
+  input_device: default        # ALSA/PipeWire device, or "default"
+  output_device: default
+  sample_rate: 16000           # Capture rate in Hz (16 kHz mono for speech)
+  frame_ms: 30                 # Audio frame size in milliseconds
+
+wakeword:
+  engine: openwakeword
+  model: franz
+  threshold: 0.5               # Detection threshold in [0, 1]
+
+stt:
+  provider: null               # Cloud speech-to-text provider
+  language: de                 # BCP-47 tag; German first
+  timeout: 30
+
+tts:
+  provider: null               # Cloud text-to-speech provider
+  language: de
+  voice: null
+  timeout: 30
+
+session:
+  max_record_seconds: 15       # Maximum length of a spoken question
+  follow_up: false             # Keep listening briefly after an answer
+  barge_in: true               # Stop playback when you speak again
+
+logging:
+  level: INFO                  # DEBUG | INFO | WARNING | ERROR | CRITICAL
+```
+
+`config.yaml` is git-ignored. Keep provider API keys in the environment (or a
+`.env` file) rather than in `config.yaml`.
+
 ## Architecture
 
 ```
@@ -89,102 +184,8 @@ src/voxoracle/
 └── __main__.py
 ```
 
-The `wakeword`, `stt` and `tts` backends sit behind protocols so providers are
-swappable. The `session` module is the orchestrator state machine; all I/O is
-injected so it is testable with fakes and no real hardware.
-
-## Requirements
-
-- Python **3.13 or higher** (managed by [uv](https://docs.astral.sh/uv/)).
-- A running DocOracle server (Python 3.12+, with documentation ingested):
-
-  ```bash
-  docoracle serve --host 0.0.0.0 --port 8000
-  ```
-
-## Installation
-
-This project is managed with `uv`, which also provides the Python 3.13+
-interpreter regardless of the version shipped by the OS.
-
-```bash
-# Install uv (if not already present)
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-# Install the project and its development dependencies
-uv sync
-```
-
-On the appliance, install the package and its CLI entry point:
-
-```bash
-uv run voxoracle --help
-```
-
-## Usage
-
-```bash
-voxoracle run      # run the always-on voice session loop
-voxoracle ask "…"  # ask DocOracle a question in text mode (no audio)
-voxoracle doctor   # check devices, models, configuration and connectivity
-voxoracle setup    # download wake-word models and prepare the device
-```
-
-The CLI commands are the operator interface for a headless device. They are
-stubs while the corresponding work packages are implemented; see
-`openspec/changes/add-voxoracle-core/tasks.md` for the roadmap.
-
-## Configuration
-
-VoxOracle reads its settings from `config.yaml`. Start from the example:
-
-```bash
-cp config.example.yaml config.yaml
-```
-
-```yaml
-docoracle:
-  url: http://localhost:8000
-  timeout: 60
-
-audio:
-  input_device: default
-  output_device: default
-  sample_rate: 16000
-  frame_ms: 30
-
-wakeword:
-  engine: openwakeword
-  model: franz
-  threshold: 0.5
-
-stt:
-  provider: null
-  language: de
-  timeout: 30
-
-tts:
-  provider: null
-  language: de
-  voice: null
-  timeout: 30
-
-session:
-  max_record_seconds: 15
-  follow_up: false
-  barge_in: true
-```
-
-`config.yaml` is git-ignored. Keep provider API keys in the environment (or a
-`.env` file) rather than in `config.yaml`.
-
-## DocOracle integration
-
-VoxOracle speaks to DocOracle over HTTP. `POST {docoracle.url}/ask` takes a
-`question` (plus optional filters such as `module`, `component` and `version`)
-and returns the `answer`, `confidence`, `citations`, and retrieved sources.
-VoxOracle speaks the `answer` and can read the citations. `GET /health` and
-`GET /info` back the `voxoracle doctor` command.
+The `session` module is the orchestrator state machine; all I/O is injected so
+it is testable with fakes and no real hardware.
 
 ## Development
 
@@ -199,12 +200,10 @@ pre-commit install   # run ruff, basedpyright, pytest and openspec on commit
 Tests must run **without audio hardware**; use synthetic fixtures and injected
 fakes rather than real devices or user data.
 
-## Specification (OpenSpec)
-
 Behaviour is specified with [OpenSpec](https://github.com/Fission-AI/OpenSpec)
-under `openspec/`. The first change, `add-voxoracle-core`, covers the WP0–WP8
-roadmap and defines the capability specs (`voice-session`, `wake-word`,
-`cloud-stt`, `cloud-tts`, `docoracle-client`, `device-audio`, `service-ops`).
+under `openspec/`. The change `add-voxoracle-core` defines the capability specs
+(`voice-session`, `wake-word`, `cloud-stt`, `cloud-tts`, `docoracle-client`,
+`device-audio`, `service-ops`).
 
 ```bash
 npm install -g @fission-ai/openspec
@@ -213,7 +212,7 @@ openspec validate --all
 
 ## Project status
 
-Experimental, just like DocOracle. Expect breaking changes; the API surface is
+Experimental — just like DocOracle. Expect breaking changes; the API surface is
 not stable yet.
 
 ## License
@@ -223,6 +222,7 @@ MIT. See [LICENSE](LICENSE).
 ## Acknowledgements
 
 - [DocOracle](https://github.com/wuan/docoracle) by
-  [wuan](https://github.com/wuan) — the RAG engine this project gives a voice to.
+  [wuan](https://github.com/wuan) — the RAG engine this project gives a voice
+  to.
 - [openWakeWord](https://github.com/dscripka/openWakeWord) — local wake-word
   detection.
