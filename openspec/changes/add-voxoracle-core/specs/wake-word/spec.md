@@ -4,7 +4,9 @@
 
 The system SHALL detect the activation word "Franz" locally using openWakeWord,
 without sending audio to any cloud service for wake-word detection. Detection
-MUST emit a trigger event to the session loop.
+MUST emit a trigger event to the session loop. The detector SHALL accept the
+16 kHz mono frames produced by the audio layer and feed openWakeWord in its
+native 80 ms blocks.
 
 #### Scenario: Wake word is detected
 - **WHEN** the "Franz" wake-word model scores above the configured threshold on the incoming audio
@@ -13,6 +15,25 @@ MUST emit a trigger event to the session loop.
 #### Scenario: Wake word runs locally
 - **WHEN** the always-on detector is running
 - **THEN** no audio leaves the device for wake-word detection
+
+### Requirement: Swappable wake-word model
+
+The wake-word model MUST be selectable from configuration as a name or an
+explicit ``.onnx`` path, so a purpose-trained "Franz" model can be installed
+without code changes. Because openWakeWord ships no pretrained "Franz" model, a
+pretrained placeholder model SHALL be used until a "Franz" model is provided.
+
+#### Scenario: Model comes from configuration
+- **WHEN** a wake-word model name or path is configured
+- **THEN** the detector loads that model
+
+#### Scenario: Missing model is reported
+- **WHEN** a configured model cannot be found and no placeholder applies
+- **THEN** the detector raises a typed error naming the missing model
+
+#### Scenario: Placeholder until Franz is available
+- **WHEN** no "franz" model is installed
+- **THEN** the detector uses the documented placeholder model
 
 ### Requirement: Configurable detection threshold
 

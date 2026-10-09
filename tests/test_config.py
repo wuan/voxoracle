@@ -82,6 +82,21 @@ def test_invalid_audio_settings_are_rejected(tmp_path) -> None:
         load_settings(config)
 
 
+def test_wakeword_defaults(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    settings = load_settings()
+    assert settings.wakeword.model == "franz"
+    assert settings.wakeword.models_dir == "models"
+    assert settings.wakeword.threshold == 0.5
+
+
+def test_invalid_wakeword_threshold_is_rejected(tmp_path) -> None:
+    config = tmp_path / "config.yaml"
+    config.write_text("wakeword:\n  threshold: 1.5\n", encoding="utf-8")
+    with pytest.raises(ValidationError):
+        load_settings(config)
+
+
 def test_default_path_is_config_yaml(tmp_path, monkeypatch) -> None:
     (tmp_path / "config.yaml").write_text("logging:\n  level: DEBUG\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)

@@ -68,6 +68,40 @@ swappable, and the `session` state machine will take all I/O as injected
 collaborators. This keeps CI hardware-free and lets WP3/WP4/WP5 proceed in
 parallel once WP2 freezes the interfaces.
 
+### Wake-word model acquisition (WP3)
+
+openWakeWord ships pretrained models for `alexa`, `hey_mycroft`, `hey_jarvis`,
+`hey_marvin`, and command phrases such as `timer`/`weather` — but **no "Franz"**
+model, and no such model exists in the public community collections. Training a
+purpose-built model requires openWakeWord's separate synthetic-data pipeline
+(piper TTS for positive clips plus large negative corpora, then the automated
+training notebook); that is a GPU/large-dataset workflow that cannot run in CI
+and is out of scope for WP3's code deliverable.
+
+Decision: make the model path **fully configurable** (`wakeword.model` as a name
+or an explicit `.onnx` path, plus `wakeword.models_dir`), and until a real
+"franz.onnx" is installed use a clearly-labelled **pretrained placeholder**
+(`hey_jarvis`). Everything else in WP3 — the detector protocol, the ONNX
+streaming adapter with 80 ms buffering, the configurable threshold, the trigger
+event, and the tests — is implemented and verified against both synthetic
+fixtures and real hardware. Installing the real "Franz" model later is a file
+drop via `voxoracle setup`, with no code changes.
+
+*Alternatives considered:* (a) training a custom model off-device now — rejected
+as infeasible in this environment (no synthetic-data pipeline, no large negative
+corpus, no suitable compute); (b) shipping a placeholder but hard-coding it —
+rejected because the model must be swappable by operators. A community model is
+downloaded through `voxoracle setup` in WP7 if one becomes available.
+
+False-activation tuning: `wakeword.threshold` is the primary control (default
+0.5, matching openWakeWord's own recommendation). Raising it reduces false
+activations at the cost of false rejects; `predict`'s `patience` option (not yet
+exposed) can additionally require several consecutive frames above threshold.
+On the Pi 3, openWakeWord's own guidance is that a single core handles many
+models in real time, so only the configured model is loaded to keep the
+always-on path light. Verified on the target: the ONNX backend loads and the
+`hey_jarvis` fixture is detected offline; ~3 s of ambient audio scored 0.0.
+
 ### OpenSpec as the behaviour contract
 
 Each capability has a spec with testable scenarios. Work packages start as (or
@@ -114,5 +148,7 @@ README; no data or public interface exists yet.
 - Which cloud STT provider (WP4) and cloud TTS provider (WP5)? Deferred to their
   design documents.
 - Which wake-word model on the target Pi? Resolved to openWakeWord's ONNX
-  backend on 64-bit Raspberry Pi OS (aarch64); the "Franz" model is selected in
-  WP3.
+  backend on 64-bit Raspberry Pi OS (aarch64). No pretrained "Franz" model
+  exists, so WP3 ships a configurable model path defaulting to the `hey_jarvis`
+  placeholder; a purpose-trained "franz.onnx" is installed via `voxoracle setup`
+  (WP7) once produced, with no code changes.

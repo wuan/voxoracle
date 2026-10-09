@@ -30,11 +30,11 @@
 
 ## 4. WP3 — Wake-word detection ("Franz", openWakeWord)
 
-- [ ] 4.1 Integrate openWakeWord behind a `WakeWordDetector` protocol and load the "Franz" model
-- [ ] 4.2 Make the detection threshold configurable
-- [ ] 4.3 Emit a trigger event to the session loop; keep the always-on path lightweight
-- [ ] 4.4 Use openWakeWord's ONNX backend on 64-bit Raspberry Pi OS (aarch64) and verify detection on the Pi 3
-- [ ] 4.5 Verify detection against fixture audio and document false-activation tuning
+- [x] 4.1 Integrate openWakeWord behind a `WakeWordDetector` protocol and load the configured wake-word model (configurable name/path; placeholder until a "franz" model exists)
+- [x] 4.2 Make the detection threshold configurable
+- [x] 4.3 Emit a trigger event to the session loop; keep the always-on path lightweight
+- [ ] 4.4 Use openWakeWord's ONNX backend on 64-bit Raspberry Pi OS (aarch64) and verify detection on the Pi 3 — ONNX backend + offline fixture detection verified on the Pi 3; live "Franz" detection pends a purpose-trained model
+- [x] 4.5 Verify detection against fixture audio and document false-activation tuning
 
 ## 5. WP4 — Cloud speech-to-text
 

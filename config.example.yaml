@@ -32,7 +32,11 @@ audio:
 wakeword:
   # Local wake-word engine and activation model.
   engine: openwakeword
+  # Model name or path to a .onnx file. "franz" resolves to <models_dir>/franz.onnx;
+  # until that model exists a placeholder model is used (see README/design.md).
   model: franz
+  # Directory searched for <model>.onnx when "model" is a bare name.
+  models_dir: models
   # Detection threshold in [0, 1]; higher reduces false activations.
   threshold: 0.5
 
