@@ -41,10 +41,10 @@ wakeword:
   threshold: 0.5
 
 # Shared Mistral cloud credentials/endpoint, used by both STT (Voxtral) and TTS.
-# Prefer the environment over this file for the key:
+# Prefer the environment (or a .env file) over this file for the key:
 #   VXORACLE_MISTRAL__API_KEY, or MISTRAL_API_KEY / LLM_API_KEY (the key
-#   DocOracle already uses, so one Mistral key covers everything). Never commit
-#   a key to config.yaml.
+#   DocOracle already uses, so one Mistral key covers everything). All of these
+#   are read from a real env var or from .env. Never commit a key to config.yaml.
 mistral:
   base_url: https://api.mistral.ai/v1
   api_key: null

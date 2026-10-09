@@ -149,18 +149,30 @@ def load_settings(path: str | Path | None = None) -> Settings:
     return _Settings()
 
 
+def _dotenv_value(name: str) -> str | None:
+    """Read ``name`` from the ``.env`` file in the current directory, if present."""
+    from dotenv import dotenv_values  # python-dotenv ships with pydantic-settings
+
+    value = dotenv_values(".env").get(name)
+    return value or None
+
+
 def resolve_mistral_api_key(settings: Settings) -> str | None:
     """Return the Mistral API key, preferring config/env over the shared env vars.
 
     Resolution order: ``mistral.api_key`` (config, ``.env`` or
     ``VXORACLE_MISTRAL__API_KEY``), then ``MISTRAL_API_KEY``, then
     ``LLM_API_KEY`` (the key DocOracle already uses, so one Mistral key can cover
-    STT/TTS and DocOracle). Returns ``None`` when no key is configured.
+    STT/TTS and DocOracle). For the last two, a real environment variable wins
+    over a ``.env`` entry, mirroring the ``VXORACLE_*`` precedence. Returns
+    ``None`` when no key is configured.
     """
     for candidate in (
         settings.mistral.api_key,
         os.environ.get("MISTRAL_API_KEY"),
+        _dotenv_value("MISTRAL_API_KEY"),
         os.environ.get("LLM_API_KEY"),
+        _dotenv_value("LLM_API_KEY"),
     ):
         if candidate:
             return candidate

@@ -121,9 +121,10 @@ provider later means a new backend, not a new transport stack.
 Credentials resolve as `mistral.api_key` (config / `.env` /
 `VXORACLE_MISTRAL__API_KEY`) then `MISTRAL_API_KEY`, then `LLM_API_KEY` — the
 key DocOracle already authenticates against `api.mistral.ai` with — so a single
-Mistral key can cover DocOracle and VoxOracle STT/TTS. No key is committed; CI
-injects a fake transport and never needs a real key. Key scope is confirmed on
-the target during WP7.
+Mistral key can cover DocOracle and VoxOracle STT/TTS. The non-prefixed names are
+read from a real environment variable or from `.env` (env wins). No key is
+committed; CI injects a fake transport and never needs a real key. Key scope is
+confirmed on the target during WP7.
 
 ### OpenSpec as the behaviour contract
 
