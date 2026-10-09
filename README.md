@@ -118,8 +118,9 @@ voxoracle doctor   # check devices, models, configuration and connectivity
 voxoracle setup    # download wake-word models and prepare the device
 ```
 
-> The commands exist as stubs and are being implemented work-package by
-> work-package; see `openspec/changes/add-voxoracle-core/tasks.md` for the
+> `ask` is implemented — it sends the question to DocOracle and prints the
+> answer. `run`, `doctor` and `setup` are stubs being implemented work-package
+> by work-package; see `openspec/changes/add-voxoracle-core/tasks.md` for the
 > roadmap.
 
 ## Configuration
@@ -167,7 +168,9 @@ logging:
 ```
 
 `config.yaml` is git-ignored. Keep provider API keys in the environment (or a
-`.env` file) rather than in `config.yaml`.
+`.env` file) rather than in `config.yaml`. Environment overrides use the
+`VXORACLE_` prefix with `__` between sections and keys, e.g.
+`VXORACLE_DOCORACLE__URL`, and the environment wins over `config.yaml`.
 
 ## Architecture
 

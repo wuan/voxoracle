@@ -14,11 +14,11 @@
 
 ## 2. WP1 — DocOracle API client
 
-- [ ] 2.1 Define typed Pydantic request/response models for `POST /ask` (`question`, `module`, `component`, `version`, `k`, `retrieval`, `show_sources`, `show_context`; response `answer`, `confidence`, `citations`, `reasoning`, `sources`, `source_details[]`, `retrieved_count`, `retrieval_mode`)
-- [ ] 2.2 Implement the async `httpx` client for `/ask`, `/health`, and `/info` with configurable base URL and timeouts
-- [ ] 2.3 Add typed errors and retry behavior for unreachable/timeout/malformed responses
-- [ ] 2.4 Implement text-mode `voxoracle ask "…"` that prints DocOracle's answer and exit codes
-- [ ] 2.5 Verify with mocked transport: success, timeout, unreachable server, and invalid-response cases
+- [x] 2.1 Define typed Pydantic request/response models for `POST /ask` (`question`, `module`, `component`, `version`, `k`, `retrieval`, `show_sources`, `show_context`; response `answer`, `confidence`, `citations`, `reasoning`, `sources`, `source_details[]`, `retrieved_count`, `retrieval_mode`)
+- [x] 2.2 Implement the async `httpx` client for `/ask`, `/health`, and `/info` with configurable base URL and timeouts
+- [x] 2.3 Add typed errors and retry behavior for unreachable/timeout/malformed responses
+- [x] 2.4 Implement text-mode `voxoracle ask "…"` that prints DocOracle's answer and exit codes
+- [x] 2.5 Verify with mocked transport: success, timeout, unreachable server, and invalid-response cases
 
 ## 3. WP2 — Audio device layer
 
@@ -61,7 +61,7 @@
 
 ## 8. WP7 — Config, packaging and Pi deployment
 
-- [ ] 8.1 Implement the settings schema (Pydantic settings) and `config.yaml`/env loading matching `config.example.yaml`
+- [x] 8.1 Implement the settings schema (Pydantic settings) and `config.yaml`/env loading matching `config.example.yaml`
 - [ ] 8.2 Implement `voxoracle setup` (wake-word model bootstrap) and `voxoracle doctor` (devices, models, DocOracle status)
 - [ ] 8.3 Finish `voxoracle run` for the target device
 - [ ] 8.4 Add a systemd unit and an install script; start on boot
