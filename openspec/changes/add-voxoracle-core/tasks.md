@@ -22,11 +22,11 @@
 
 ## 3. WP2 — Audio device layer
 
-- [ ] 3.1 Implement microphone capture at 16 kHz mono via `sounddevice`/PortAudio
-- [ ] 3.2 Implement speaker playback with resampling to the device rate
-- [ ] 3.3 Add device enumeration/selection from configuration
-- [ ] 3.4 Add voice activity detection / endpointing (silero-vad or webrtcvad) with a maximum-duration cap
-- [ ] 3.5 Verify capture/playback/VAD with synthetic buffers and no audio hardware
+- [x] 3.1 Implement microphone capture at 16 kHz mono via `sounddevice`/PortAudio
+- [x] 3.2 Implement speaker playback with resampling to the device rate
+- [x] 3.3 Add device enumeration/selection from configuration
+- [x] 3.4 Add voice activity detection / endpointing (silero-vad or webrtcvad) with a maximum-duration cap
+- [x] 3.5 Verify capture/playback/VAD with synthetic buffers and no audio hardware
 
 ## 4. WP3 — Wake-word detection ("Franz", openWakeWord)
 

@@ -1,0 +1,277 @@
+"""Audio device layer tests with synthetic buffers and fake devices (no hardware)."""
+
+from __future__ import annotations
+
+import numpy as np
+import pytest
+
+from voxoracle.audio import (
+    AudioFormatError,
+    DeviceInfo,
+    DeviceNotFoundError,
+    EndpointingSettings,
+    WebRtcVad,
+    record_utterance,
+    resample,
+)
+from voxoracle.audio.sounddevice_backend import (
+    SoundDeviceInput,
+    _input_device_rate,
+    resolve_device,
+)
+
+FRAME_SAMPLES = 480  # 30 ms at 16 kHz
+SAMPLE_RATE = 16000
+
+
+def tone_frame(amplitude: int = 8000) -> np.ndarray:
+    return (np.sin(np.linspace(0, 2 * np.pi * 8, FRAME_SAMPLES)) * amplitude).astype(np.int16)
+
+
+def silence_frame() -> np.ndarray:
+    return np.zeros(FRAME_SAMPLES, dtype=np.int16)
+
+
+class FakeInput:
+    """AudioInput fake that replays a list of frames, then silence."""
+
+    def __init__(self, frames: list[np.ndarray]) -> None:
+        self._frames = list(frames)
+        self._index = 0
+
+    @property
+    def sample_rate(self) -> int:
+        return SAMPLE_RATE
+
+    @property
+    def frame_samples(self) -> int:
+        return FRAME_SAMPLES
+
+    def read_frame(self) -> np.ndarray:
+        if self._index < len(self._frames):
+            frame = self._frames[self._index]
+            self._index += 1
+            return frame
+        return silence_frame()
+
+    def close(self) -> None:
+        return None
+
+
+class FakeVad:
+    """VAD fake driven by a predicate over the frame contents."""
+
+    def __init__(self, speech_frames: set[int] | None = None) -> None:
+        self._speech_frames = speech_frames
+        self._calls = 0
+
+    def is_speech(self, frame: bytes, sample_rate: int) -> bool:
+        index = self._calls
+        self._calls += 1
+        if self._speech_frames is not None:
+            return index in self._speech_frames
+        return any(frame)  # non-zero audio counts as speech
+
+
+class TestResample:
+    def test_identity_when_rates_match(self) -> None:
+        samples = tone_frame()
+        result = resample(samples, SAMPLE_RATE, SAMPLE_RATE)
+        assert np.array_equal(result, samples)
+
+    def test_upsamples_to_target_length(self) -> None:
+        samples = tone_frame()
+        result = resample(samples, SAMPLE_RATE, 48000)
+        assert result.dtype == np.int16
+        assert result.size == round(samples.size * 48000 / SAMPLE_RATE)
+
+    def test_downsamples_to_target_length(self) -> None:
+        samples = tone_frame()
+        result = resample(samples, 48000, 16000)
+        assert result.size == round(samples.size * 16000 / 48000)
+
+    def test_empty_input(self) -> None:
+        assert resample(np.empty(0, dtype=np.int16), SAMPLE_RATE, 48000).size == 0
+
+    def test_invalid_rate_is_rejected(self) -> None:
+        with pytest.raises(AudioFormatError):
+            resample(tone_frame(), 0, 16000)
+
+
+class TestEndpointing:
+    def settings(self, max_seconds: float = 5.0) -> EndpointingSettings:
+        return EndpointingSettings(
+            sample_rate=SAMPLE_RATE,
+            frame_samples=FRAME_SAMPLES,
+            max_seconds=max_seconds,
+            endpoint_silence_ms=90,  # 3 frames
+            min_speech_ms=60,  # 2 frames
+        )
+
+    def test_leading_and_trailing_silence_trimmed(self) -> None:
+        frames = [silence_frame(), silence_frame(), tone_frame(), tone_frame(), tone_frame()]
+        frames += [silence_frame() for _ in range(4)]
+        result = record_utterance(FakeInput(frames), FakeVad(), self.settings())
+        assert result is not None
+        # three speech frames survive; leading silence dropped and trailing
+        # silence removed by the endpoint.
+        assert result.size == 3 * FRAME_SAMPLES
+
+    def test_no_speech_returns_none(self) -> None:
+        frames = [silence_frame() for _ in range(10)]
+        assert record_utterance(FakeInput(frames), FakeVad(), self.settings()) is None
+
+    def test_short_speech_is_rejected(self) -> None:
+        frames = [tone_frame()] + [silence_frame() for _ in range(10)]
+        # min_speech is 2 frames, only one speech frame seen
+        assert record_utterance(FakeInput(frames), FakeVad(), self.settings()) is None
+
+    def test_max_duration_caps_capture(self) -> None:
+        frames = [tone_frame() for _ in range(100)]
+        result = record_utterance(FakeInput(frames), FakeVad(), self.settings(max_seconds=0.3))
+        assert result is not None
+        # 0.3 s at 30 ms/frame == 10 frames maximum
+        assert result.size == 10 * FRAME_SAMPLES
+
+
+class TestWebRtcVad:
+    def test_silence_is_not_speech(self) -> None:
+        vad = WebRtcVad(aggressiveness=2)
+        assert vad.is_speech(silence_frame().tobytes(), SAMPLE_RATE) is False
+
+    def test_invalid_aggressiveness_is_rejected(self) -> None:
+        with pytest.raises(ValueError):
+            WebRtcVad(aggressiveness=5)
+
+    def test_unsupported_frame_duration_is_rejected(self) -> None:
+        vad = WebRtcVad()
+        # 25 ms at 16 kHz (400 samples) is not a WebRTC VAD frame length
+        bad_frame = np.zeros(400, dtype=np.int16).tobytes()
+        with pytest.raises(AudioFormatError, match="10, 20 or 30 ms"):
+            vad.is_speech(bad_frame, SAMPLE_RATE)
+
+    def test_unsupported_sample_rate_is_rejected(self) -> None:
+        vad = WebRtcVad()
+        with pytest.raises(AudioFormatError, match="sample rate"):
+            vad.is_speech(silence_frame().tobytes(), 44100)
+
+
+class TestDeviceSelection:
+    def devices(self) -> list[DeviceInfo]:
+        return [
+            DeviceInfo(index=1, name="USB Microphone", kind="input", max_input_channels=1),
+            DeviceInfo(index=2, name="Built-in Mic", kind="input", max_input_channels=1),
+            DeviceInfo(
+                index=3,
+                name="CD04: USB Audio (hw:1,0)",
+                kind="input",
+                max_input_channels=1,
+            ),
+        ]
+
+    def test_default_device_resolves_to_none(self) -> None:
+        assert resolve_device("default", "input", self.devices()) is None
+        assert resolve_device(None, "input", self.devices()) is None
+
+    def test_configured_device_resolves_by_name(self) -> None:
+        assert resolve_device("USB Microphone", "input", self.devices()) == 1
+
+    def test_name_match_is_case_insensitive(self) -> None:
+        assert resolve_device("built-in mic", "input", self.devices()) == 2
+
+    def test_short_name_matches_full_portaudio_name(self) -> None:
+        assert resolve_device("CD04", "input", self.devices()) == 3
+
+    def test_name_contained_in_full_name_matches(self) -> None:
+        devices = [
+            DeviceInfo(index=0, name="bcm2835 Headphones: - (hw:0,0)", kind="output"),
+            DeviceInfo(index=1, name="sysdefault", kind="output"),
+        ]
+        assert resolve_device("Headphones", "output", devices) == 0
+
+    def test_exact_match_wins_over_prefix(self) -> None:
+        devices = [
+            DeviceInfo(index=1, name="USB Microphone", kind="input", max_input_channels=1),
+            DeviceInfo(index=2, name="USB", kind="input", max_input_channels=1),
+        ]
+        assert resolve_device("USB", "input", devices) == 2
+
+    def test_missing_device_raises_typed_error(self) -> None:
+        with pytest.raises(DeviceNotFoundError) as excinfo:
+            resolve_device("Nonexistent", "input", self.devices())
+        assert excinfo.value.name == "Nonexistent"
+        assert excinfo.value.kind == "input"
+
+
+class FakeInputStream:
+    """Minimal fake of sounddevice.InputStream that yields device-rate blocks."""
+
+    def __init__(self, **kwargs: object) -> None:
+        self.blocksize = int(kwargs["blocksize"])  # type: ignore[arg-type]
+        self.kwargs = kwargs
+        self.started = False
+
+    def start(self) -> None:
+        self.started = True
+
+    def read(self, frames: int) -> tuple[np.ndarray, bool]:
+        # A ramp makes the block distinguishable and non-silent.
+        block = np.arange(frames, dtype=np.int16)
+        return block.reshape(-1, 1), False
+
+    def stop(self) -> None:
+        return None
+
+    def close(self) -> None:
+        return None
+
+
+class FakeSoundDevice:
+    """Fake ``sounddevice`` module for exercising SoundDeviceInput without PortAudio."""
+
+    def __init__(self, supported_rates: set[int], default_rate: int) -> None:
+        self._supported_rates = supported_rates
+        self._default_rate = default_rate
+        self.opened_inputs: list[FakeInputStream] = []
+
+    def check_input_settings(
+        self, *, device: object, channels: int, samplerate: int, dtype: str
+    ) -> None:
+        if samplerate not in self._supported_rates:
+            raise RuntimeError("Invalid sample rate")
+
+    def query_devices(self, device: object = None, kind: str | None = None) -> dict[str, object]:
+        return {"default_samplerate": float(self._default_rate)}
+
+    def InputStream(self, **kwargs: object) -> FakeInputStream:  # noqa: N802 - mirrors sounddevice's API
+        stream = FakeInputStream(**kwargs)
+        self.opened_inputs.append(stream)
+        return stream
+
+
+class TestSoundDeviceInput:
+    def test_input_device_rate_kept_when_supported(self, monkeypatch) -> None:
+        sd = FakeSoundDevice(supported_rates={16000}, default_rate=16000)
+        monkeypatch.setattr("voxoracle.audio.sounddevice_backend._sounddevice", lambda: sd)
+        assert _input_device_rate(sd, 1, 16000) == 16000
+
+    def test_input_device_rate_falls_back_to_device_default(self, monkeypatch) -> None:
+        sd = FakeSoundDevice(supported_rates={32000}, default_rate=32000)
+        monkeypatch.setattr("voxoracle.audio.sounddevice_backend._sounddevice", lambda: sd)
+        assert _input_device_rate(sd, 1, 16000) == 32000
+
+    def test_capture_resamples_device_rate_to_target(self, monkeypatch) -> None:
+        sd = FakeSoundDevice(supported_rates={32000}, default_rate=32000)
+        monkeypatch.setattr("voxoracle.audio.sounddevice_backend._sounddevice", lambda: sd)
+        capture = SoundDeviceInput(device=1, sample_rate=16000, frame_samples=480)
+        try:
+            opened = sd.opened_inputs[0]
+            assert opened.kwargs["samplerate"] == 32000  # opened at device rate
+            assert opened.blocksize == 960  # 480 target samples at double rate
+            frame = capture.read_frame()
+        finally:
+            capture.close()
+        assert frame.dtype == np.int16
+        assert frame.size == 480  # exactly frame_samples at the target rate
+        assert capture.sample_rate == 16000
+        assert capture.frame_samples == 480
