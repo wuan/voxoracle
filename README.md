@@ -150,20 +150,18 @@ wakeword:
 mistral:
   base_url: https://api.mistral.ai/v1   # Shared by STT and TTS
   api_key: null                # Prefer the environment; never commit a key
-  timeout: 30
+  timeout: 30                  # Request timeout for STT and TTS
   retries: 2
 
 stt:
   provider: mistral            # Cloud speech-to-text provider
   model: voxtral-mini-latest   # Voxtral Mini Transcribe 2
   language: de                 # BCP-47 tag; German first
-  timeout: 30
 
 tts:
   provider: mistral            # Cloud text-to-speech provider
   language: de
   voice: null
-  timeout: 30
 
 session:
   max_record_seconds: 15       # Maximum length of a spoken question

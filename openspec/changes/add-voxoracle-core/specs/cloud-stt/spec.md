@@ -43,9 +43,10 @@ configured language to the provider.
 The STT implementation MUST enforce a configurable timeout and MUST retry
 transient failures (timeouts, connection errors, HTTP 429 and 5xx) a bounded
 number of times, surfacing typed errors (authentication, rate-limit,
-server, malformed) to the session on final failure. The Mistral HTTP client is
-shared with the TTS backend so both reuse the same authentication, retry and
-error behaviour.
+server, malformed) to the session on final failure. The timeout and retry count
+are owned by the shared Mistral HTTP client (`mistral.timeout`,
+`mistral.retries`), which is shared with the TTS backend so both reuse the same
+authentication, retry and error behaviour.
 
 #### Scenario: Timeout is enforced
 - **WHEN** the provider does not respond within the configured timeout

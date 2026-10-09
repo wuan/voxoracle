@@ -62,14 +62,12 @@ class STTSettings(BaseModel):
     provider: str = "mistral"
     model: str = "voxtral-mini-latest"
     language: str = "de"
-    timeout: float = Field(default=30.0, gt=0.0)
 
 
 class TTSSettings(BaseModel):
     provider: str = "mistral"
     language: str = "de"
     voice: str | None = None
-    timeout: float = Field(default=30.0, gt=0.0)
 
 
 class SessionSettings(BaseModel):

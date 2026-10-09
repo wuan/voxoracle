@@ -74,7 +74,7 @@ def test_default_language_is_german() -> None:
 
 def test_language_override() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        assert b"name=\"language\"" in request.content
+        assert b'name="language"' in request.content
         assert b"en" in request.content
         return httpx.Response(200, json={"text": "Hello"})
 

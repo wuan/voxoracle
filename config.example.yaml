@@ -48,6 +48,7 @@ wakeword:
 mistral:
   base_url: https://api.mistral.ai/v1
   api_key: null
+  # Request timeout and retry count for STT and TTS (owned by the shared client).
   timeout: 30
   retries: 2
 
@@ -58,7 +59,6 @@ stt:
   model: voxtral-mini-latest
   # BCP-47 language tag; German first.
   language: de
-  timeout: 30
 
 tts:
   # Cloud text-to-speech provider (implemented in WP5).
@@ -67,7 +67,6 @@ tts:
   language: de
   # Provider-specific voice identifier.
   voice: null
-  timeout: 30
 
 session:
   # Maximum length of a single spoken question, in seconds.
