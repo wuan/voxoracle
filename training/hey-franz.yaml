@@ -1,0 +1,168 @@
+# =============================================================================
+# VoxOracle wake-word training config — German "Hey Franz" (livekit-wakeword)
+# =============================================================================
+#
+# Trained OFF-device on a fast machine; the Pi 3 only runs inference on the
+# exported ONNX classifier. Recipe (run from the training machine):
+#
+#   uv tool install "livekit-wakeword[train,eval,export,voxcpm]"
+#   livekit-wakeword setup --config training/hey-franz.yaml   # models + data
+#   livekit-wakeword run    training/hey-franz.yaml           # full pipeline
+#   # or stage by stage: generate / augment / train / export / eval
+#
+# Acceptance gate (see openspec/changes/migrate-wakeword-to-livekit): the eval
+# must report FPPH <= 0.5 on German background audio; recall and the selected
+# threshold are recorded with the change. `target_fp_per_hour` below trains to
+# a stricter target (0.2) so the deployed model passes the gate with margin.
+#
+# Schema: WakeWordConfig in livekit-wakeword (docs/data-generation.md).
+# =============================================================================
+
+model_name: hey-franz
+
+# Exact phrases synthesized as positives and defended against via adversarial
+# negatives. Spelling variants cover plausible user pronunciations/spellings.
+target_phrases:
+  - "hey franz"
+  - "hei franz"
+
+# -----------------------------------------------------------------------------
+# Data generation
+# -----------------------------------------------------------------------------
+
+# VoxCPM2 TTS: required for German (Piper is English-US only).
+tts_backend: voxcpm
+
+# Multilingual guidance (livekit-wakeword docs): raise n_samples and voice
+# diversity, because the frozen Google speech embedding is English-heavy and
+# VoxCPM speech is less diverse than the large Piper speaker pool.
+n_samples: 50000
+n_samples_val: 10000
+n_background_samples: 2000
+n_background_samples_val: 500
+
+# Adversarial negatives: phonetic false friends of "Hey Franz" (German
+# neighbors, similar English phrases, partial phrases). The auto generator is
+# English/CMUdict-biased, so manual negatives matter for non-English phrases.
+custom_negative_phrases:
+  - "franz"
+  - "hey frank"
+  - "hey franck"
+  - "hey franc"
+  - "he franz"
+  - "het franz"
+  - "hay franz"
+  - "hey franze"
+  - "ja franz"
+  - "hallo franz"
+  - "hey friends"
+  - "hey frank's"
+  - "a franz"
+
+voxcpm_tts:
+  model_id: openbmb/VoxCPM2
+  model_cache_relpath: voxcpm/VoxCPM2
+  local_model_path: null
+  load_denoiser: false
+  cfg_values: [1.5, 2.0, 2.5, 3.0]
+  inference_timesteps_list: [8, 10, 12]
+  # 50 German voice personas (age, gender, pitch, pace, accent region, energy);
+  # the clip index cycles prompt x cfg x timesteps. The docs recommend 50-100
+  # for multilingual models.
+  voice_design_prompts:
+    - "Eine junge Frau mit heller, klarer Stimme, mittleres Tempo, freundlich"
+    - "Ein junger Mann mit warmem Bariton, ruhig und gut verstaendlich"
+    - "Eine Frau in den Dreissigern, mittlere Lage, sachliches Tempo"
+    - "Ein Mann in den Vierzigern, dunkle stimmgewaltige Lage, gemuetlich"
+    - "Eine aeltere Frau mit weicher, ruhiger Stimme, langsames Tempo"
+    - "Ein aelterer Mann mit rauchiger Stimme, bedaechtig und bestimmt"
+    - "Eine Studentin, lebhaft und schnell sprechend, hohe Stimmlage"
+    - "Ein Student, lockerer Umgangston, mittelschnelles Tempo"
+    - "Eine Kinderstimme, etwa zehn Jahre, hell und neugierig"
+    - "Eine teenagermaessige Stimme, lässig, leicht schnippisch"
+    - "Eine Nachrichtensprecherin, autoritaetvoll, gleichmaessiger Rhythmus"
+    - "Ein Nachrichtensprecher, seriös, klar artikuliert"
+    - "Eine Sprecherin mit leichtem bayerischem Akzent, warm und langsam"
+    - "Ein Sprecher mit norddeutschem Akzent, trocken und präzise"
+    - "Eine Sprecherin mit berliner Schnauze, schnell und temperamentvoll"
+    - "Ein Sprecher mit schwäbischem Akzent, gemütlich, langsames Tempo"
+    - "Eine Sprecherin mit leichtem sächsischem Tonfall, freundlich"
+    - "Ein Sprecher mit kölnischem Tonfall, offen und fröhlich"
+    - "Eine Sprecherin mit hellem, klingendem Timbre, fröhlich, zügig"
+    - "Ein Sprecher mit tiefer, sonorer Stimme, langsam und ruhig"
+    - "Eine flüsternde Stimme, leise, nah am Mikrofon, langsam"
+    - "Eine raue, heisere Stimme, mittleres Tempo, viel Energie"
+    - "Eine monotone Stimme, gleichförmig, roboterhaft klar"
+    - "Eine sehr polierte Studio-Stimme, smooth, mittleres Tempo"
+    - "Eine aufgeregte Stimme, hoher Tonfall, schnell"
+    - "Eine muede Stimme, gedämpfte Energie, gleichmaessig"
+    - "Eine energiegeladene Sporttrainer-Stimme, durchsetzungsstark"
+    - "Eine erklärende Dozenten-Stimme, ruhig, didaktisch, deutlich"
+    - "Ein Vorleser, gemessenes Tempo, warme Klangfarbe"
+    - "Eine Erzählerin für Hörbücher, ausdrucksstark, variabel im Tempo"
+    - "Ein Kundendienst-Ton, leicht lächelnd, mittleres Tempo"
+    - "Eine streng formelle Stimme, nüchtern, präzise artikuliert"
+    - "Eine fröhliche Stimme, weite Tonhöhenvariation, lebhaft"
+    - "Ein breiter, kräftiger Bauerntyp, derb und langsam"
+    - "Eine elegante Stimme, kühl und distinguiert, langsames Tempo"
+    - "Ein Sportreporter-Ton, schnell und mitreißend"
+    - "Eine verlegene, leise Stimme, unsicher, langsam"
+    - "Eine bestimmte, fast herrische Stimme, klar und laut"
+    - "Ein beherzter, markiger Befehlston, langsam und deutlich"
+    - "Eine sanfte Mutterstimme, beruhigend, mittellangsam"
+    - "Ein väterlicher Ton, warm, leicht ironisch"
+    - "Eine neugierige Stimme, fragend, mittleres Tempo"
+    - "Ein verschlafener Ton, schwerfällig, sehr langsam"
+    - "Eine gepresste Stimme, niedrige Lautstärke, angespannt"
+    - "Ein heller, metallischer Ton, schnell und präzise"
+    - "Eine samtige Stimme, dunkel und weich, mittleres Tempo"
+    - "Ein aufsässiger Ton, stolz, mittleres Tempo"
+    - "Eine hektische Stimme, angespannt, sehr schnell"
+    - "Eine meditative Stimme, sehr ruhig, lange Pausen"
+    - "Ein herzliches Lachen in der Stimme, warm, zügig"
+
+# -----------------------------------------------------------------------------
+# Paths
+# -----------------------------------------------------------------------------
+
+data_dir: ./data
+output_dir: ./output
+
+# -----------------------------------------------------------------------------
+# Augmentation
+# -----------------------------------------------------------------------------
+
+augmentation:
+  clip_duration: 2.0
+  batch_size: 16
+  rounds: 3
+  background_paths: [./data/backgrounds]
+  rir_paths: [./data/rirs]
+
+# -----------------------------------------------------------------------------
+# Model
+# -----------------------------------------------------------------------------
+# conv_attention head: the low-FPPH architecture (two orders of magnitude fewer
+# false positives than the flat DNN). `small` fits the Pi 3 CPU budget.
+
+model:
+  model_type: conv_attention
+  model_size: small
+
+# -----------------------------------------------------------------------------
+# Training
+# -----------------------------------------------------------------------------
+
+steps: 100000
+learning_rate: 0.0001
+weight_decay: 0.01
+label_smoothing: 0.05
+max_negative_weight: 3000
+# Trained to a stricter target than the 0.5 FPPH acceptance gate.
+target_fp_per_hour: 0.2
+
+batch_n_per_class:
+  positive: 50
+  adversarial_negative: 50
+  ACAV100M_sample: 1024
+  background_noise: 50

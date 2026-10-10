@@ -126,10 +126,10 @@ def test_cli_doctor_survives_broken_wakeword_dependency(tmp_path, monkeypatch) -
     for name in ("VXORACLE_MISTRAL__API_KEY", "MISTRAL_API_KEY", "LLM_API_KEY"):
         monkeypatch.delenv(name, raising=False)
 
-    # A broken openWakeWord install raises ImportError (not WakeWordError),
+    # A broken livekit-wakeword install raises ImportError (not WakeWordError),
     # which must become a FAIL line instead of crashing the whole run.
     def boom(settings: object) -> object:
-        raise ImportError("No module named 'openwakeword'")
+        raise ImportError("No module named 'livekit_wakeword'")
 
     monkeypatch.setattr("voxoracle.cli.diagnostics.check_wakeword", boom)
     result = runner.invoke(app, ["doctor"])
@@ -174,10 +174,10 @@ def test_cli_doctor_survives_invalid_docoracle_url(tmp_path, monkeypatch) -> Non
 def test_cli_setup_survives_broken_wakeword_dependency(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
 
-    # A broken openWakeWord install raises ImportError (not WakeWordError),
+    # A broken livekit-wakeword install raises ImportError (not WakeWordError),
     # which must render a [fail] line instead of crashing setup.
     def boom(settings: object) -> object:
-        raise ImportError("No module named 'openwakeword'")
+        raise ImportError("No module named 'livekit_wakeword'")
 
     monkeypatch.setattr("voxoracle.cli.diagnostics.check_wakeword", boom)
     result = runner.invoke(app, ["setup"])

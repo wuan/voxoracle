@@ -30,18 +30,21 @@ audio:
   endpoint_silence_ms: 700
 
 wakeword:
-  # Local wake-word engine and activation model.
-  engine: openwakeword
-  # Model name or path to a .onnx file. "hey-franz" resolves to
-  # <models_dir>/hey-franz.onnx; the bundled, clearly-labelled placeholder is
-  # openWakeWord's hey_jarvis (it detects "hey jarvis", which is not the wake
-  # word "Hey Franz"), used until a purpose-trained hey-franz model is installed
-  # (see README/design.md).
+  # Trained activation model (required). "hey-franz" resolves to
+  # <models_dir>/hey-franz.onnx. There is no placeholder: doctor and startup
+  # fail fast until the model trained with livekit-wakeword is installed
+  # (train off-device; recipe in training/hey-franz.yaml).
   model: hey-franz
   # Directory searched for <model>.onnx when "model" is a bare name.
   models_dir: models
-  # Detection threshold in [0, 1]; higher reduces false activations.
-  threshold: 0.5
+  # Detection threshold in [0, 1]; higher reduces false activations. The
+  # conv-attention model's operating point sits well above the old 0.5 default;
+  # this interim value matches upstream (~0.68) and is finalized from the
+  # trained model's eval output.
+  threshold: 0.68
+  # Score the rolling ~2 s audio window every N capture frames (30 ms each).
+  # Higher strides save CPU on the Pi 3 at the cost of detection latency.
+  stride_frames: 4
 
 # Shared Mistral cloud credentials/endpoint, used by both STT (Voxtral) and TTS.
 # Prefer the environment (or a .env file) over this file for the key:

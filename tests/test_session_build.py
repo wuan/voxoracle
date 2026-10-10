@@ -191,6 +191,59 @@ def _patch_build_hardware(monkeypatch, *, input_stream, output_stream) -> None:
     monkeypatch.setattr(detector_mod, "resolve_model_path", lambda *a, **k: _raise_model())
 
 
+def test_build_session_wires_windowed_detector_from_settings(tmp_path, monkeypatch) -> None:
+    # Happy-path build with faked devices and scorer: the wake-word detector is
+    # constructed from the configured threshold/stride and the build succeeds.
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+    audio_in = _Closable()
+    audio_out = _Closable()
+
+    class _FakeBackend:
+        def __init__(self, settings: object) -> None:
+            pass
+
+        def open_configured_input(self) -> object:
+            return audio_in
+
+        def open_configured_output(self, sample_rate: int) -> object:
+            return audio_out
+
+    import voxoracle.audio.sounddevice_backend as backend_mod
+    import voxoracle.wakeword.detector as detector_mod
+
+    monkeypatch.setattr(backend_mod, "SoundDeviceBackend", _FakeBackend)
+
+    class _FakeScorer:
+        model_name = "hey-franz"
+
+        def predict(self, window: object) -> dict[str, float]:
+            return {"hey-franz": 0.0}
+
+        def reset(self) -> None:
+            return None
+
+    constructor_kwargs: dict[str, object] = {}
+    real_detector = detector_mod.WindowedWakeWordDetector
+
+    def spy_detector(*args: object, **kwargs: object) -> object:
+        constructor_kwargs.update(kwargs)
+        return real_detector(*args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(detector_mod, "resolve_model_path", lambda *a, **k: tmp_path / "m.onnx")
+    monkeypatch.setattr(detector_mod, "LiveKitWakeWordScorer", lambda path: _FakeScorer())
+    monkeypatch.setattr(detector_mod, "WindowedWakeWordDetector", spy_detector)
+
+    settings = Settings()
+    components = build_session(settings)
+
+    assert constructor_kwargs["threshold"] == settings.wakeword.threshold
+    assert constructor_kwargs["stride_frames"] == settings.wakeword.stride_frames
+    assert constructor_kwargs["model_name"] == "hey-franz"
+    asyncio.run(components.aclose())
+    assert audio_in.closed and audio_out.closed
+
+
 def _raise_model() -> object:
     from voxoracle.wakeword.errors import WakeWordModelNotFoundError
 
