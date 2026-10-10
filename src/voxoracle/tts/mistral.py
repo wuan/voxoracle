@@ -180,6 +180,7 @@ class MistralSpeechSynthesizer:
 
     async def _stream_chunks(self, payload: Mapping[str, Any]) -> AsyncGenerator[SpeechChunk]:
         buffer = b""
+        produced = False
         async for frame in self._client.stream_post_json(SPEECH_PATH, json=payload):
             # Normalise CRLF so an event boundary is always the blank line "\n\n".
             buffer = (buffer + frame).replace(b"\r\n", b"\n")
@@ -187,11 +188,17 @@ class MistralSpeechSynthesizer:
             while SSE_EVENT_SEPARATOR in buffer:
                 event, buffer = buffer.split(SSE_EVENT_SEPARATOR, 1)
                 for chunk in self._chunks_from_event(event):
+                    produced = True
                     yield chunk
         # Flush a trailing event if the stream did not end with a blank line.
         if buffer.strip():
             for chunk in self._chunks_from_event(buffer):
+                produced = True
                 yield chunk
+        if not produced:
+            # A stream with no audio is indistinguishable from silence on a
+            # voice appliance; fail so the session can surface it.
+            raise MistralResponseError("speech stream produced no audio")
 
     def _chunks_from_event(self, event: bytes) -> list[SpeechChunk]:
         return [self._chunk(_decode_base64(data)) for data in self._event_audio_data(event)]

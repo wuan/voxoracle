@@ -65,6 +65,15 @@ def sse(*frames: dict) -> bytes:
     return b"".join(b"event: x\ndata: " + json.dumps(frame).encode() + b"\n\n" for frame in frames)
 
 
+def delta_sse() -> bytes:
+    """A minimal valid stream: one audio delta plus the done event."""
+    delta = base64.b64encode(pcm_bytes([0.0])).decode()
+    return sse(
+        {"type": "speech.audio.delta", "audio_data": delta},
+        {"type": "speech.audio.done", "usage": {}},
+    )
+
+
 def synthesize(handler, *, retries=0, **kwargs) -> list[SpeechChunk]:
     async def scenario():
         client = MistralAudioClient(
@@ -233,6 +242,42 @@ def test_stream_flushes_trailing_event_without_blank_line() -> None:
     assert len(chunks[0].samples) == 1
 
 
+def test_empty_stream_is_malformed() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=b"", headers={"content-type": "text/event-stream"})
+
+    with pytest.raises(MistralResponseError, match="no audio"):
+        synthesize(handler)
+
+
+def test_stream_without_audio_events_is_malformed() -> None:
+    # A body with only a done event (or comments) yields no audio: on a voice
+    # appliance that is silence, so it must fail rather than pass.
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=b': keep-alive\n\ndata: {"type": "speech.audio.done"}\n\n',
+            headers={"content-type": "text/event-stream"},
+        )
+
+    with pytest.raises(MistralResponseError, match="no audio"):
+        synthesize(handler)
+
+
+def test_non_sse_json_body_is_malformed() -> None:
+    # The provider ignoring stream=true and returning one plain JSON object must
+    # not be accepted as an empty (silent) success.
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"audio_data": "AAAA"},
+            headers={"content-type": "application/json"},
+        )
+
+    with pytest.raises(MistralResponseError):
+        synthesize(handler)
+
+
 def test_stream_handles_crlf_event_boundaries() -> None:
     frame = {
         "type": "speech.audio.delta",
@@ -252,7 +297,7 @@ def test_request_shape_uses_german_defaults() -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.update(json.loads(request.content))
-        return httpx.Response(200, content=sse({"type": "speech.audio.done", "usage": {}}))
+        return httpx.Response(200, content=delta_sse())
 
     synthesize(handler)
     assert seen["model"] == DEFAULT_MODEL
@@ -265,7 +310,7 @@ def test_language_selects_default_voice() -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.update(json.loads(request.content))
-        return httpx.Response(200, content=sse({"type": "speech.audio.done", "usage": {}}))
+        return httpx.Response(200, content=delta_sse())
 
     # With no explicit voice, the configured language provides the voice id.
     synthesize(handler, language="en")
@@ -277,7 +322,7 @@ def test_explicit_voice_overrides_language() -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.update(json.loads(request.content))
-        return httpx.Response(200, content=sse({"type": "speech.audio.done", "usage": {}}))
+        return httpx.Response(200, content=delta_sse())
 
     synthesize(handler, language="de", voice="anna")
     assert seen["voice_id"] == "anna"
@@ -288,7 +333,7 @@ def test_voice_and_model_overrides() -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.update(json.loads(request.content))
-        return httpx.Response(200, content=sse({"type": "speech.audio.done", "usage": {}}))
+        return httpx.Response(200, content=delta_sse())
 
     synthesize(handler, model="custom-model", voice="custom-voice")
     assert seen["model"] == "custom-model"
@@ -300,7 +345,7 @@ def test_per_call_voice_override() -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen.update(json.loads(request.content))
-        return httpx.Response(200, content=sse({"type": "speech.audio.done", "usage": {}}))
+        return httpx.Response(200, content=delta_sse())
 
     async def scenario():
         client = MistralAudioClient("test-key", retries=0, transport=httpx.MockTransport(handler))
