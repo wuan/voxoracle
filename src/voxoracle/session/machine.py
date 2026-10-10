@@ -161,7 +161,13 @@ class VoiceSession:
         return self._state
 
     def request_stop(self) -> None:
-        """Ask :meth:`run` to stop after the current step (event-loop thread)."""
+        """Ask :meth:`run` to stop as soon as it next observes the request.
+
+        Call from the event-loop thread. The loop checks the request between
+        steps of a turn and between frames while listening/recording, so it ends
+        promptly rather than after a whole turn; recording is aborted at the next
+        frame boundary.
+        """
         self._stop.set()
 
     async def run(self) -> None:
@@ -209,9 +215,13 @@ class VoiceSession:
         """Record, transcribe, ask and speak one question.
 
         ``follow_up`` marks a window opened after a previous answer, where a
-        silent window is normal and must not trigger a spoken prompt.
+        silent window is normal and must not trigger a spoken prompt. A stop
+        request is checked between steps so shutdown does not run the remaining
+        transcribe/ask/speak work (or an error prompt) after Ctrl-C.
         """
         samples = await self._record(max_record_seconds)
+        if self._stop.is_set():
+            return _After.IDLE
         if samples is None:
             if not follow_up:
                 await self._say(self._prompts.no_speech)
@@ -227,12 +237,16 @@ class VoiceSession:
         if not question.strip():
             await self._say(self._prompts.no_speech)
             return _After.IDLE
+        if self._stop.is_set():
+            return _After.IDLE
 
         try:
             answer = await self._ask(question)
         except DocOracleError as exc:
             _LOGGER.warning("DocOracle request failed: %s", exc)
             await self._say(self._prompts.docoracle_error)
+            return _After.IDLE
+        if self._stop.is_set():
             return _After.IDLE
 
         try:
@@ -261,7 +275,12 @@ class VoiceSession:
         return False
 
     async def _record(self, max_seconds: float) -> NDArray[np.int16] | None:
-        """Capture one utterance, or ``None`` when no speech was detected."""
+        """Capture one utterance, or ``None`` when no speech was detected.
+
+        ``should_stop`` lets a stop request abort recording promptly instead of
+        waiting out ``max_seconds`` (the longest phase of a turn), so Ctrl-C and
+        systemd stop do not stall for up to ``session.max_record_seconds``.
+        """
         self._set_state(SessionState.RECORDING)
         settings = EndpointingSettings(
             sample_rate=self._config.sample_rate,
@@ -270,7 +289,9 @@ class VoiceSession:
             endpoint_silence_ms=self._config.endpoint_silence_ms,
             min_speech_ms=self._config.min_speech_ms,
         )
-        return await asyncio.to_thread(record_utterance, self._input, self._vad, settings)
+        return await asyncio.to_thread(
+            record_utterance, self._input, self._vad, settings, self._stop.is_set
+        )
 
     async def _transcribe(self, samples: NDArray[np.int16]) -> str:
         self._set_state(SessionState.TRANSCRIBING)
@@ -288,7 +309,11 @@ class VoiceSession:
         """Speak a non-answer prompt, swallowing a TTS failure.
 
         An error prompt is best-effort: if the speaker itself fails, the loop
-        must still return to IDLE rather than terminate.
+        must still return to IDLE rather than terminate. A wake word heard while
+        the prompt plays still interrupts it (barge-in), but the resulting turn
+        ends without a new one starting - the user must say the wake word again
+        to ask. That is deliberate: the trigger that cut a short error prompt
+        (not a real answer) is not carried into a new question.
         """
         try:
             await self._speak(text)

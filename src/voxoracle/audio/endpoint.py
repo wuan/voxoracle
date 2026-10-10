@@ -7,6 +7,7 @@ in tests with synthetic frames and a fake detector.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -73,12 +74,17 @@ def record_utterance(
     audio_input: AudioInput,
     vad: VoiceActivityDetector,
     settings: EndpointingSettings,
+    should_stop: Callable[[], bool] | None = None,
 ) -> NDArray[np.int16] | None:
     """Record one utterance, trimming leading/trailing silence.
 
     Reading stops after ``endpoint_silence_ms`` of continuous silence following
-    detected speech, or at ``max_seconds``, whichever comes first. Returns the
-    captured ``int16`` samples, or ``None`` when no speech was detected.
+    detected speech, or at ``max_seconds``, whichever comes first. ``should_stop``
+    is polled before each frame so a caller (the voice session) can abort the
+    recording cooperatively, e.g. on Ctrl-C, without waiting out
+    ``max_seconds``; when it returns ``True`` the recording ends. Returns the
+    captured ``int16`` samples, or ``None`` when no speech was detected (or the
+    recording was aborted).
     """
     frame_ms = round(settings.frame_samples * 1000 / settings.sample_rate)
     endpoint_frames = max(1, round(settings.endpoint_silence_ms / frame_ms))
@@ -89,8 +95,12 @@ def record_utterance(
     speech_frames = 0
     trailing_silence = 0
     reached_endpoint = False
+    aborted = False
 
     for _ in range(max_frames):
+        if should_stop is not None and should_stop():
+            aborted = True
+            break
         frame = audio_input.read_frame()
         is_speech = vad.is_speech(frame.tobytes(), settings.sample_rate)
         if not captured and not is_speech:
@@ -105,6 +115,8 @@ def record_utterance(
                 reached_endpoint = True
                 break
 
+    if aborted:
+        return None
     if not captured or speech_frames < min_speech_frames:
         return None
     if reached_endpoint and trailing_silence:

@@ -79,33 +79,38 @@ def build_session(settings: Settings) -> SessionComponents:
 
     backend = SoundDeviceBackend(settings.audio)
     frame_samples = round(settings.audio.sample_rate * settings.audio.frame_ms / 1000)
+    # Open the input stream first but close it if a later step fails, so a
+    # half-built session does not leak the capture device.
     audio_input = backend.open_configured_input()
-    audio_output = backend.open_configured_output(settings.tts.sample_rate)
+    try:
+        audio_output = backend.open_configured_output(settings.tts.sample_rate)
+        model_path = resolve_model_path(settings.wakeword.model, resolve_models_dir(settings))
+        scorer = OpenWakeWordScorer(model_path)
+        detector = OpenWakeWordDetector(
+            scorer,
+            model_name=scorer.model_name,
+            threshold=settings.wakeword.threshold,
+        )
 
-    model_path = resolve_model_path(settings.wakeword.model, resolve_models_dir(settings))
-    scorer = OpenWakeWordScorer(model_path)
-    detector = OpenWakeWordDetector(
-        scorer,
-        model_name=scorer.model_name,
-        threshold=settings.wakeword.threshold,
-    )
-
-    mistral_client = MistralAudioClient(
-        api_key,
-        base_url=settings.mistral.base_url,
-        timeout=settings.mistral.timeout,
-        retries=settings.mistral.retries,
-    )
-    transcriber: Transcriber = MistralTranscriber(
-        mistral_client, model=settings.stt.model, language=settings.stt.language
-    )
-    synthesizer: Synthesizer = MistralSpeechSynthesizer(
-        mistral_client,
-        model=settings.tts.model,
-        language=settings.tts.language,
-        voice=settings.tts.voice,
-        sample_rate=settings.tts.sample_rate,
-    )
+        mistral_client = MistralAudioClient(
+            api_key,
+            base_url=settings.mistral.base_url,
+            timeout=settings.mistral.timeout,
+            retries=settings.mistral.retries,
+        )
+        transcriber: Transcriber = MistralTranscriber(
+            mistral_client, model=settings.stt.model, language=settings.stt.language
+        )
+        synthesizer: Synthesizer = MistralSpeechSynthesizer(
+            mistral_client,
+            model=settings.tts.model,
+            language=settings.tts.language,
+            voice=settings.tts.voice,
+            sample_rate=settings.tts.sample_rate,
+        )
+    except Exception:
+        audio_input.close()
+        raise
     player = SpeechPlayer(synthesizer, audio_output)
 
     docoracle = DocOracleClient(

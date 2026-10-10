@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import signal
 from collections.abc import Callable
 from typing import Annotated
 
@@ -38,8 +39,15 @@ _SEVERITY_MARK = {
 
 
 def _configure_logging(level: str) -> None:
-    """Configure stdlib logging at ``level`` (default INFO), to stderr."""
-    resolved = getattr(logging, level.upper(), logging.INFO)
+    """Configure stdlib logging at ``level`` (default INFO), to stderr.
+
+    ``logging.level`` is an unvalidated string in the schema, so an unknown value
+    falls back to INFO with a warning rather than being silently ignored.
+    """
+    resolved = getattr(logging, level.upper(), None)
+    if not isinstance(resolved, int):
+        typer.echo(f"warning: unknown logging level {level!r}; using INFO", err=True)
+        resolved = logging.INFO
     logging.basicConfig(
         level=resolved,
         format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
@@ -48,25 +56,34 @@ def _configure_logging(level: str) -> None:
 
 
 async def _serve(components: SessionComponents) -> None:
-    """Run the voice session until interrupted, then shut the components down."""
+    """Run the voice session until stopped, then shut the components down.
+
+    ``SIGINT``/``SIGTERM`` are wired to a cooperative stop (rather than relying
+    on the default handler that cancels the main task at its current await and
+    would cut playback mid-sentence): the session is asked to stop, it unwinds at
+    the next step or frame boundary, and :meth:`SessionComponents.aclose` closes
+    the device streams and HTTP clients.
+    """
+    loop = asyncio.get_running_loop()
+    installed: list[signal.Signals] = []
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, components.session.request_stop)
+        except NotImplementedError:  # pragma: no cover - not on this platform
+            continue
+        installed.append(sig)
     try:
         await components.session.run()
     finally:
+        for sig in installed:
+            loop.remove_signal_handler(sig)
         await components.aclose()
 
 
 def _run_session(settings: Settings) -> None:
-    """Build the device components and run the session loop under Ctrl-C.
-
-    A KeyboardInterrupt (Ctrl-C) is turned into a graceful stop: the session is
-    asked to finish its current step, and the capture/output streams plus the
-    HTTP clients are closed by :meth:`SessionComponents.aclose`.
-    """
+    """Build the device components and run the session loop under Ctrl-C."""
     components = build_session(settings)
-    try:
-        asyncio.run(_serve(components))
-    except KeyboardInterrupt:
-        typer.echo("\nStopped.", err=True)
+    asyncio.run(_serve(components))
 
 
 @app.command()

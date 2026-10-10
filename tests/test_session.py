@@ -301,7 +301,6 @@ def test_unexpected_exception_is_logged_and_loop_continues() -> None:
 
     client = FlakyClient()
     player = FakePlayer()
-    session, _detector, _t, _c, _p = build_session(audio, player=player)
     session = VoiceSession(
         detector=FakeDetector(),
         audio_input=audio,
@@ -556,6 +555,62 @@ def test_request_stop_ends_the_watch_loop() -> None:
     asyncio.run(scenario())
 
     assert session.state is SessionState.IDLE
+
+
+def test_stop_during_recording_aborts_before_transcribing() -> None:
+    # A stop requested while recording must end the turn at the next frame, not
+    # run transcribe/ask/speak. The source yields the wake frame, then blocks so
+    # the stop lands mid-record.
+    import threading
+
+    class BlockingInput(FakeAudioInput):
+        def __init__(self) -> None:
+            super().__init__([])
+            self.calls = 0
+            self.release = threading.Event()
+
+        def read_frame(self) -> np.ndarray:
+            self.calls += 1
+            if self.calls == 1:
+                return frame(WAKE)  # trigger the wake word
+            self.release.wait(timeout=5.0)  # block during recording
+            return frame(SPEECH)
+
+    audio = BlockingInput()
+    session, _detector, transcriber, client, player = build_session(audio)
+
+    def hook(state: SessionState) -> None:
+        if state is SessionState.RECORDING:
+            # Stop as soon as recording begins, then release the blocked read.
+            session.request_stop()
+            audio.release.set()
+
+    session._on_state = hook
+
+    asyncio.run(asyncio.wait_for(session.run(), timeout=2.0))
+
+    assert transcriber.calls == []  # never transcribed
+    assert client.questions == []
+    assert player.spoken == []
+    assert session.state is SessionState.IDLE
+
+
+def test_stop_between_steps_skips_the_answer() -> None:
+    # A stop seen after transcription must skip the DocOracle request and speech.
+    audio = FakeAudioInput(wake_then_question())
+    session, _detector, transcriber, client, player = build_session(audio)
+
+    def hook(state: SessionState) -> None:
+        if state is SessionState.TRANSCRIBING:
+            session.request_stop()
+
+    session._on_state = hook
+
+    asyncio.run(asyncio.wait_for(session.run(), timeout=2.0))
+
+    assert len(transcriber.calls) == 1
+    assert client.questions == []
+    assert player.spoken == []
 
 
 def test_stop_before_run_is_honored() -> None:
