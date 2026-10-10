@@ -126,10 +126,88 @@ voxoracle doctor   # check devices, models, configuration and connectivity
 voxoracle setup    # download wake-word models and prepare the device
 ```
 
-> `ask` is implemented — it sends the question to DocOracle and prints the
-> answer. `run`, `doctor` and `setup` are stubs being implemented work-package
-> by work-package; see `openspec/changes/add-voxoracle-core/tasks.md` for the
-> roadmap.
+> `ask`, `doctor` and `setup` are implemented. `run` is still a placeholder
+> that exits non-zero until the WP6 voice loop lands; see
+> `openspec/changes/add-voxoracle-core/tasks.md` for the roadmap.
+
+## Deployment on the Pi (ariana)
+
+The reference appliance is a Raspberry Pi 3 (`ariana`) running 64-bit
+(aarch64) Raspberry Pi OS, Debian trixie, with `uv` in `~/.local/bin` and the
+native Python 3.13. Everything is scoped to the invoking user (`voxoracle`); no
+path is hardcoded to root.
+
+### Hardware
+
+- **Microphone**: a USB card enumerating as `CD04` (`arecord -l` →
+  `card 1: CD04 [CD04], device 0: USB Audio`). It is a 32 kHz capture device;
+  VoxOracle resamples to its 16 kHz internal rate.
+- **Speaker**: the Pi's onboard 3.5 mm output, `bcm2835 Headphones`
+  (`aplay -l` → `card 0: bcm2835 Headphones`).
+- **Placement**: put the appliance where the microphone can hear normal speech
+  from the room and the speaker is audible — a shelf or side table, away from
+  fans and air vents that add noise. The USB microphone and the WiFi adapter
+  share the Pi 3's single USB bus; keep the microphone on a short cable.
+- **PortAudio**: `sounddevice` needs the PortAudio shared library. On Raspberry
+  Pi OS it is usually present; if `voxoracle doctor` reports it missing, install
+  it permanently: `sudo apt install libportaudio2`.
+
+### Install
+
+```bash
+# From a checkout (installs this working copy):
+VOXORACLE_SOURCE=$(pwd) ./deploy/install.sh
+
+# Or, on the Pi, straight from GitHub (clones/pulls into ~/voxoracle):
+./deploy/install.sh
+```
+
+The installer finds `uv` (installing it if missing), runs `uv sync --frozen`,
+writes `config.yaml` and `.env` from the examples **without overwriting**
+existing files, and installs + enables the `voxoracle` systemd service.
+
+> `voxoracle run` is a placeholder until WP6 lands. The unit installs and
+> enables correctly, but the service exits non-zero with a clear message and
+> retries with backoff (`Restart=on-failure`) until the voice loop exists. This
+> is expected and noted in the unit.
+
+### Configuration
+
+Keys live in `~/voxoracle/.env` (or the environment); never commit them:
+
+```bash
+# .env
+MISTRAL_API_KEY=...            # or LLM_API_KEY (the key DocOracle already uses)
+VXORACLE_DOCORACLE__URL=http://192.168.0.10:8000   # your DocOracle on the LAN
+```
+
+- `VXORACLE_DOCORACLE__URL` overrides `docoracle.url` from `config.yaml` (the
+  environment wins). Set it to the DocOracle server reachable from the Pi.
+- The Mistral key is resolved in this order: `mistral.api_key` (config/`.env`/
+  `VXORACLE_MISTRAL__API_KEY`), then `MISTRAL_API_KEY`, then `LLM_API_KEY`.
+  `voxoracle doctor` reports *found/missing* and the source — never the key.
+
+### Service commands
+
+```bash
+# System service (when install.sh can use sudo):
+sudo systemctl status voxoracle
+sudo journalctl -u voxoracle -f
+
+# User service (no sudo):
+systemctl --user status voxoracle
+journalctl --user -u voxoracle -f
+```
+
+### Verify with doctor
+
+`voxoracle doctor` resolves settings, enumerates the audio devices, resolves the
+wake-word model, probes DocOracle `/health` and `/info`, and checks the Mistral
+key — exiting non-zero on any hard failure:
+
+```bash
+~/voxoracle/.venv/bin/voxoracle doctor
+```
 
 ## Configuration
 
