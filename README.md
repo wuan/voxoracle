@@ -249,8 +249,10 @@ stt:
 
 tts:
   provider: mistral            # Cloud text-to-speech provider
-  language: de
-  voice: null
+  model: voxtral-mini-tts-2603 # Voxtral speech synthesis
+  language: de                 # Also selects the default voice when voice is null
+  voice: null                  # null -> German default from language
+  sample_rate: 24000           # Provider PCM rate in Hz (confirmed in WP7)
 
 session:
   max_record_seconds: 15       # Maximum length of a spoken question

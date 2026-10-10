@@ -61,12 +61,19 @@ stt:
   language: de
 
 tts:
-  # Cloud text-to-speech provider (implemented in WP5).
+  # Cloud text-to-speech provider (Mistral Voxtral speech synthesis).
   provider: mistral
-  # BCP-47 language tag; German first.
+  # Speech-synthesis model.
+  model: voxtral-mini-tts-2603
+  # BCP-47 language tag; German first. Also selects the default voice when voice
+  # is null (Mistral has no language field and picks the voice by voice_id).
   language: de
-  # Provider-specific voice identifier.
+  # Provider voice id; null uses the German default from the language above.
+  # Confirmed on-device during WP7 (set an explicit voice id if it differs).
   voice: null
+  # Sample rate (Hz) of the provider's PCM audio. Mistral does not publish it;
+  # correct it here if the device plays at the wrong speed (confirmed in WP7).
+  sample_rate: 24000
 
 session:
   # Maximum length of a single spoken question, in seconds.

@@ -53,7 +53,24 @@ class AudioOutput(Protocol):
 
     def write(self, samples: np.ndarray) -> None: ...
 
+    def start(self) -> None:
+        """Ensure the sink is playable (idempotent).
+
+        After :meth:`abort` or :meth:`stop` the device is no longer playing;
+        callers invoke this before the next utterance so a stopped stream is
+        restarted.
+        """
+        ...
+
     def stop(self) -> None: ...
+
+    def abort(self) -> None:
+        """Stop immediately, discarding buffered audio (for barge-in).
+
+        Unlike :meth:`stop`, which drains already-buffered audio, this abandons
+        it so playback ceases at once. Call :meth:`start` before writing again.
+        """
+        ...
 
     def close(self) -> None: ...
 

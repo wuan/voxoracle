@@ -111,6 +111,29 @@ text-to-speech. STT uses the Voxtral offline transcription endpoint
 utterance as a 16-bit mono WAV multipart form with a `language` field
 (default `de`). The response is OpenAI-compatible (`{"text": "..."}`).
 
+TTS (WP5) uses the Voxtral speech-synthesis endpoint
+(`POST https://api.mistral.ai/v1/audio/speech`, model `voxtral-mini-tts-2603`),
+sending `input`, `voice_id` (the configured voice, or the German default derived
+from `tts.language` when `tts.voice` is null), `response_format` (`pcm`) and
+`stream=true`. With streaming, Mistral answers with a `text/event-stream` whose
+`data:` frames carry `speech.audio.delta` events (`{"audio_data": "<base64>"}`)
+terminated by `speech.audio.done`; the vendor's `pcm` format is raw
+little-endian float32 samples, which the backend converts to the mono 16-bit PCM
+the WP2 output layer plays. Mistral does not publish the `pcm` sample rate, so it
+is configurable (`tts.sample_rate`, default 24 kHz; the player resamples chunks
+to the device rate) and confirmed on-device in WP7. A non-streaming
+`wav` response (`{"audio_data": "<base64>"}`) is also decodable.
+
+Speech playback lives in a provider-agnostic `SpeechPlayer` that writes each
+chunk to an `AudioOutput` as it arrives and exposes an `interrupt()` stop hook.
+The output protocol gained `abort()` (`Pa_AbortStream`) so barge-in discards
+buffered audio rather than draining it, and `start()` so the player restarts an
+aborted output at the next utterance; the player also writes in short slices and
+swallows a slice-write failure caused by its own abort. WP6 wires the hook to
+the wake-word detector so a barge-in closes the provider stream (cancelling the
+request) and aborts the speaker. On-device (WP7) confirm the real barge-in path
+and the live `pcm` sample rate and SSE framing.
+
 Both STT and TTS share a single authenticated client
 (`voxoracle.mistral.MistralAudioClient`) that owns the base URL, bearer
 authentication, timeout, bounded exponential-backoff retries (capped, with

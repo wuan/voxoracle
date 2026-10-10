@@ -46,10 +46,10 @@
 
 ## 6. WP5 — Cloud text-to-speech
 
-- [ ] 6.1 Define the provider-agnostic `TTS` protocol (text in, audio out)
-- [ ] 6.2 Implement a configurable cloud TTS backend with a German voice
-- [ ] 6.3 Add streaming playback and barge-in support
-- [ ] 6.4 Verify German answer text with a mocked provider and confirm barge-in stops playback
+- [x] 6.1 Define the provider-agnostic `TTS` protocol (text in, audio out)
+- [x] 6.2 Implement a configurable cloud TTS backend with a German voice
+- [x] 6.3 Add streaming playback and barge-in support (abort discards buffered audio; the output restarts at the next utterance so playback recovers after a barge-in)
+- [x] 6.4 Verify German answer text with a mocked provider and confirm barge-in stops playback
 
 ## 7. WP6 — Voice session state machine
 
@@ -66,6 +66,7 @@
 - [ ] 8.3 Finish `voxoracle run` for the target device
 - [x] 8.4 Add a systemd unit and an install script; start on boot
 - [ ] 8.5 Verify `voxoracle run` on a Pi after install and document the hardware setup
+- [ ] 8.6 On-device (TTS): verify the real barge-in path (a write on a `Pa_AbortStream`-aborted stream restarts playback for the next utterance) and confirm Mistral's live `pcm` sample rate and SSE framing (including multi-line `data:` handling)
 
 ## 9. WP8 — Quality, CI and release hardening
 
