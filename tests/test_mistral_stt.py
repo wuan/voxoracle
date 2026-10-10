@@ -224,14 +224,14 @@ class _FakeAsyncio:
         self.sleep = sleep
 
 
-def failing_client(monkeypatch, handler, *, retries, **kwargs) -> list[float]:
+def failing_client(monkeypatch, handler, *, retries, jitter=0.0, **kwargs) -> list[float]:
     delays = recording_sleep(monkeypatch)
 
     async def scenario() -> None:
         client = MistralAudioClient(
             "test-key",
             retries=retries,
-            jitter=0.0,
+            jitter=jitter,
             transport=httpx.MockTransport(handler),
             **kwargs,
         )
@@ -272,6 +272,20 @@ def test_retry_after_header_is_honored_on_429(monkeypatch) -> None:
 
     delays = failing_client(monkeypatch, handler, retries=1, retry_delay=0.5, max_retry_delay=30.0)
     assert delays == [7.0]  # server hint wins over the smaller backoff
+
+
+def test_jitter_never_undercuts_retry_after() -> None:
+    # With jitter on (default), the Retry-After delay is a hard lower bound.
+    client = MistralAudioClient("test-key", retry_delay=0.5, backoff_factor=2.0, jitter=0.5)
+    for _ in range(200):
+        assert client._delay_for(0, retry_after=7.0) >= 7.0
+
+
+def test_jitter_still_applies_without_retry_after() -> None:
+    client = MistralAudioClient("test-key", retry_delay=10.0, backoff_factor=1.0, jitter=0.5)
+    delays = {client._delay_for(0, retry_after=None) for _ in range(50)}
+    assert len(delays) > 1  # jitter varies the delay
+    assert all(5.0 <= d <= 10.0 for d in delays)  # within [1-jitter, 1] * base
 
 
 def test_http_408_is_retried(monkeypatch) -> None:

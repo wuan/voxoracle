@@ -96,16 +96,18 @@ class MistralAudioClient:
     def _delay_for(self, attempt: int, retry_after: float | None) -> float:
         """Delay before the next attempt: exponential backoff, capped, with jitter.
 
-        ``retry_after`` (from a 429/503 header) is honored as a lower bound, but
-        is itself capped at ``max_retry_delay``.
+        Jitter is applied to the backoff component only, then a numeric
+        ``retry_after`` (from a 429/503 header) is honored as a lower bound (itself
+        capped at ``max_retry_delay``). The returned delay is therefore never
+        shorter than ``min(retry_after, max_retry_delay)``, so a server-mandated
+        wait is never undercut by jitter.
         """
-        base = self._retry_delay * self._backoff_factor**attempt
-        delay = min(base, self._max_retry_delay)
-        if retry_after is not None:
-            delay = max(delay, min(retry_after, self._max_retry_delay))
+        backoff = min(self._retry_delay * self._backoff_factor**attempt, self._max_retry_delay)
         if self._jitter > 0:
-            delay *= 1 - self._jitter * random.random()
-        return delay
+            backoff *= 1 - self._jitter * random.random()
+        if retry_after is not None:
+            backoff = max(backoff, min(retry_after, self._max_retry_delay))
+        return backoff
 
     @staticmethod
     def _retry_after_seconds(response: httpx.Response) -> float | None:
