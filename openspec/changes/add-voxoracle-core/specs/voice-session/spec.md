@@ -34,6 +34,10 @@ terminating. The typed Mistral errors raised by STT/TTS and the typed
 - **WHEN** the TRANSCRIBING step fails with a typed Mistral error
 - **THEN** the system speaks an error prompt and returns to IDLE
 
+#### Scenario: Text-to-speech fails
+- **WHEN** the SPEAKING step fails with a typed Mistral error while reading the answer
+- **THEN** the system attempts a spoken error prompt (best effort) and returns to IDLE
+
 #### Scenario: No speech captured
 - **WHEN** recording ends without any detected speech
 - **THEN** the system speaks a prompt and returns to IDLE without asking DocOracle
@@ -96,3 +100,7 @@ are not starved.
 #### Scenario: Graceful shutdown
 - **WHEN** a stop is requested (e.g. Ctrl-C, wired to `request_stop` via a signal handler)
 - **THEN** the loop ends at the next step or frame boundary (recording is aborted promptly rather than waiting out `session.max_record_seconds`), the device streams are closed, and the HTTP clients are closed
+
+#### Scenario: Stop before the loop starts
+- **WHEN** a stop is requested before the loop is started
+- **THEN** the loop exits immediately without recording, and the stop flag is reset when the run ends so the session can be run again

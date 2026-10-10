@@ -475,7 +475,8 @@ class FailingPlayer(FakePlayer):
 
 def test_tts_failure_on_answer_returns_to_idle() -> None:
     audio = FakeAudioInput(wake_then_question())
-    player = FailingPlayer(MistralServerError(500, "tts down"))
+    # Fails only the first (answer) speak, so the apology prompt can play.
+    player = FailingPlayer(MistralServerError(500, "tts down"), fail_on=1)
     states: list[SessionState] = []
     session, _detector, _t, client, _p = build_session(audio, player=player)
     session._on_state = stop_after_first_idle(session, states)
@@ -483,7 +484,8 @@ def test_tts_failure_on_answer_returns_to_idle() -> None:
     asyncio.run(asyncio.wait_for(session.run(), timeout=2.0))
 
     assert client.questions == ["Wie funktioniert das?"]
-    assert player.spoken == []
+    # The answer failed, so the session speaks the TTS-error apology instead.
+    assert player.spoken == [Prompts().tts_error]
     assert states[-1] is SessionState.IDLE
 
 
@@ -614,19 +616,37 @@ def test_stop_between_steps_skips_the_answer() -> None:
 
 
 def test_stop_before_run_is_honored() -> None:
-    # request_stop() before run() must not be lost (run clears it, so this is a
-    # regression guard for the loop's first check).
+    # request_stop() before run() must not be lost: run() does not clear a
+    # pre-set stop, so a session cancelled before it starts never records.
     audio = FakeAudioInput([frame(WAKE), *speech_frames(7), *silence_frames(23)])
-    session, _detector, _t, _c, _p = build_session(audio)
+    session, _detector, transcriber, _c, _p = build_session(audio)
+    session.request_stop()
+
+    asyncio.run(asyncio.wait_for(session.run(), timeout=1.0))
+
+    assert transcriber.calls == []
+    assert session.state is SessionState.IDLE
+
+
+def test_session_can_be_rerun_after_a_stop() -> None:
+    # A completed run resets the stop flag, so the same session runs again.
+    audio = FakeAudioInput([*wake_then_question(), *wake_then_question()])
+    session, _detector, _t, client, _p = build_session(audio)
 
     async def scenario() -> None:
-        task = asyncio.create_task(session.run())
-        await asyncio.sleep(0.01)
+        first = asyncio.create_task(session.run())
+        await asyncio.sleep(0)
         session.request_stop()
-        await asyncio.wait_for(task, timeout=1.0)
+        await asyncio.wait_for(first, timeout=1.0)
+        assert not session._stop.is_set()  # reset for the next run  # type: ignore[attr-defined]
+        second = asyncio.create_task(session.run())
+        await asyncio.sleep(0)
+        session.request_stop()
+        await asyncio.wait_for(second, timeout=1.0)
 
     asyncio.run(scenario())
-    # No assertion on turn count: the point is that it terminates promptly.
+
+    assert session.state is SessionState.IDLE
 
 
 def test_session_config_follow_up_enabled_flag() -> None:

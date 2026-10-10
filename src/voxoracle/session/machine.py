@@ -171,8 +171,12 @@ class VoiceSession:
         self._stop.set()
 
     async def run(self) -> None:
-        """Run the session until :meth:`request_stop` is called."""
-        self._stop.clear()
+        """Run the session until :meth:`request_stop` is called.
+
+        A stop requested before ``run`` is honored (the loop exits at once), so a
+        caller can cancel a session it has not started yet. The stop flag is
+        reset when the run ends, so the same session can be run again.
+        """
         try:
             while not self._stop.is_set():
                 self._set_state(SessionState.IDLE)
@@ -181,6 +185,7 @@ class VoiceSession:
                     break
                 await self._run_turn_chain()
         finally:
+            self._stop.clear()
             self._set_state(SessionState.IDLE)
         _LOGGER.info("voice session stopped")
 
@@ -253,6 +258,9 @@ class VoiceSession:
             interrupted = await self._speak(answer)
         except MistralError as exc:
             _LOGGER.warning("text-to-speech failed: %s", exc)
+            # Trying to speak the apology may also fail (TTS is likely down);
+            # _say swallows that, so the loop still returns to IDLE.
+            await self._say(self._prompts.tts_error)
             return _After.IDLE
         if interrupted:
             return _After.NEW_TURN
