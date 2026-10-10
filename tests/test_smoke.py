@@ -21,11 +21,15 @@ def test_cli_help_lists_commands() -> None:
         assert command in result.stdout
 
 
-def test_cli_run_is_explicit_placeholder() -> None:
+def test_cli_run_requires_a_mistral_key(tmp_path, monkeypatch) -> None:
+    # `run` is implemented: without a Mistral key it fails with a clear message
+    # (device components cannot be built) instead of a traceback.
+    monkeypatch.chdir(tmp_path)
+    for name in ("VXORACLE_MISTRAL__API_KEY", "MISTRAL_API_KEY", "LLM_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
     result = runner.invoke(app, ["run"])
-    assert result.exit_code != 0
-    assert "not implemented yet" in result.stderr
-    assert "WP6" in result.stderr
+    assert result.exit_code == 1
+    assert "Mistral API key" in result.stderr
 
 
 def test_cli_ask_prints_answer(monkeypatch) -> None:

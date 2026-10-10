@@ -2,14 +2,14 @@
 
 The CLI is intentionally thin: it exposes the operator surface while the actual
 voice-session behaviour lives in the ``session``/``audio``/``stt``/``tts``/
-``wakeword``/``docoracle`` packages. ``ask`` (WP1), ``doctor`` and ``setup``
-(WP7) are implemented; ``run`` is a placeholder until WP6 lands (see
-``openspec/changes/add-voxoracle-core/tasks.md``).
+``wakeword``/``docoracle`` packages. ``run`` (WP6), ``ask`` (WP1), ``doctor`` and
+``setup`` (WP7) are implemented.
 """
 
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Callable
 from typing import Annotated
 
@@ -19,6 +19,7 @@ from voxoracle import diagnostics
 from voxoracle.config import Settings, load_settings
 from voxoracle.docoracle.client import DocOracleClient, DocOracleError
 from voxoracle.docoracle.models import AskRequest
+from voxoracle.session.build import SessionComponents, build_session
 
 app = typer.Typer(
     name="voxoracle",
@@ -27,6 +28,8 @@ app = typer.Typer(
     add_completion=False,
 )
 
+_LOGGER = logging.getLogger("voxoracle")
+
 _SEVERITY_MARK = {
     diagnostics.Severity.OK: "[ ok ]",
     diagnostics.Severity.WARN: "[warn]",
@@ -34,15 +37,56 @@ _SEVERITY_MARK = {
 }
 
 
+def _configure_logging(level: str) -> None:
+    """Configure stdlib logging at ``level`` (default INFO), to stderr."""
+    resolved = getattr(logging, level.upper(), logging.INFO)
+    logging.basicConfig(
+        level=resolved,
+        format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
+
+async def _serve(components: SessionComponents) -> None:
+    """Run the voice session until interrupted, then shut the components down."""
+    try:
+        await components.session.run()
+    finally:
+        await components.aclose()
+
+
+def _run_session(settings: Settings) -> None:
+    """Build the device components and run the session loop under Ctrl-C.
+
+    A KeyboardInterrupt (Ctrl-C) is turned into a graceful stop: the session is
+    asked to finish its current step, and the capture/output streams plus the
+    HTTP clients are closed by :meth:`SessionComponents.aclose`.
+    """
+    components = build_session(settings)
+    try:
+        asyncio.run(_serve(components))
+    except KeyboardInterrupt:
+        typer.echo("\nStopped.", err=True)
+
+
 @app.command()
 def run() -> None:
     """Run the always-on voice session loop."""
-    typer.echo(
-        "error: `voxoracle run` is not implemented yet (WP6); "
-        'use `voxoracle ask "…"` for text mode and `voxoracle doctor` to check the device.',
-        err=True,
-    )
-    raise typer.Exit(code=1)
+    try:
+        settings = load_settings()
+    except Exception as exc:  # noqa: BLE001 - surface any config error, like `setup`
+        typer.echo(f"error: invalid configuration: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    _configure_logging(settings.logging.level)
+    _LOGGER.info("starting voice session (Ctrl-C to stop)")
+
+    try:
+        _run_session(settings)
+    except Exception as exc:  # noqa: BLE001 - report startup failures clearly
+        _LOGGER.error("voice session could not start: %s", exc)
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
 
 
 @app.command()

@@ -1,0 +1,47 @@
+"""Component wiring tests for `voxoracle run` (no hardware, no network)."""
+
+from __future__ import annotations
+
+import asyncio
+
+import pytest
+
+from voxoracle.config import Settings
+from voxoracle.session.build import ConfigurationError, SessionComponents, build_session
+
+
+def test_build_session_without_key_raises_clear_error(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    for name in ("VXORACLE_MISTRAL__API_KEY", "MISTRAL_API_KEY", "LLM_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    with pytest.raises(ConfigurationError, match="Mistral API key"):
+        build_session(Settings())
+
+
+class _Closable:
+    def __init__(self) -> None:
+        self.closed = False
+        self.aclosed = False
+
+    def close(self) -> None:
+        self.closed = True
+
+    async def aclose(self) -> None:
+        self.aclosed = True
+
+
+def test_session_components_aclose_closes_streams_and_clients() -> None:
+    audio_in = _Closable()
+    audio_out = _Closable()
+    docoracle = _Closable()
+    components = SessionComponents(
+        session=None,  # type: ignore[arg-type]
+        audio_input=audio_in,  # type: ignore[arg-type]
+        audio_output=audio_out,  # type: ignore[arg-type]
+        docoracle_client=docoracle,  # type: ignore[arg-type]
+    )
+
+    asyncio.run(components.aclose())
+
+    assert audio_in.closed and audio_out.closed  # device streams first
+    assert docoracle.aclosed

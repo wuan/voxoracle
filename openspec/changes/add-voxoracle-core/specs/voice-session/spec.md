@@ -15,38 +15,59 @@ word is detected.
 - **WHEN** the session is in IDLE and no wake word has been detected
 - **THEN** the system does not send audio to speech-to-text or DocOracle
 
+#### Scenario: Recording is bounded
+- **WHEN** recording is in progress
+- **THEN** it ends at `audio.endpoint_silence_ms` of silence after speech, or at `session.max_record_seconds`, whichever comes first
+
 ### Requirement: Spoken errors return to IDLE
 
 The session MUST handle no-speech, STT failure, and DocOracle unreachable/timeout
 errors by speaking a short error prompt and returning to IDLE rather than
-terminating.
+terminating. The typed Mistral errors raised by STT/TTS and the typed
+`DocOracleError` raised by the client MUST both map to spoken messages.
 
 #### Scenario: DocOracle is unreachable
 - **WHEN** the ASKING step fails because DocOracle is unreachable or times out
 - **THEN** the system speaks an error prompt and returns to IDLE
 
 #### Scenario: Speech-to-text fails
-- **WHEN** the TRANSCRIBING step fails
+- **WHEN** the TRANSCRIBING step fails with a typed Mistral error
 - **THEN** the system speaks an error prompt and returns to IDLE
 
 #### Scenario: No speech captured
 - **WHEN** recording ends without any detected speech
-- **THEN** the system returns to IDLE without asking DocOracle
+- **THEN** the system speaks a prompt and returns to IDLE without asking DocOracle
+
+#### Scenario: Unexpected failure does not kill the loop
+- **WHEN** a turn raises an unexpected (untyped) exception
+- **THEN** the system logs it, returns to IDLE, and continues watching for the wake word
 
 ### Requirement: Barge-in stops playback
 
-The session MUST stop speaking the current answer when the wake word or speech is
-detected during SPEAKING, and MUST then treat the input as a new turn.
+The session MUST stop speaking the current answer when the wake word is detected
+during SPEAKING, and MUST then treat the input as a new turn (recording the next
+question without requiring a further activation). Barge-in MUST be disabled when
+`session.barge_in` is false.
 
 #### Scenario: Wake word during playback
 - **WHEN** the wake word is detected while the answer is being spoken
 - **THEN** playback stops and the session begins a new turn
 
+#### Scenario: Interrupt is scheduled on the event loop
+- **WHEN** the wake-word watcher fires during playback
+- **THEN** `SpeechPlayer.interrupt` is invoked from the event-loop thread (scheduled with `call_soon_threadsafe`), since the interrupt hook is an `asyncio.Event` and is not thread-safe
+
+#### Scenario: Barge-in disabled
+- **WHEN** `session.barge_in` is false and the wake word is heard during playback
+- **THEN** playback continues to the end of the answer and the session returns to IDLE
+
 ### Requirement: Optional follow-up window
 
 The session MUST support a configurable follow-up mode in which it briefly keeps
 listening for a follow-up question after an answer without requiring the wake
-word again.
+word again. It is enabled when `session.follow_up` is true and
+`session.follow_up_seconds` is greater than zero; `follow_up_seconds` bounds how
+long the window stays open, and a value of 0 disables it.
 
 #### Scenario: Follow-up mode enabled
 - **WHEN** follow-up mode is enabled and a follow-up question is spoken within the window
@@ -56,12 +77,22 @@ word again.
 - **WHEN** follow-up mode is disabled
 - **THEN** the session returns to IDLE after speaking the answer and requires the wake word again
 
+#### Scenario: Follow-up window elapses silently
+- **WHEN** the follow-up window elapses without speech
+- **THEN** the session returns to IDLE without speaking a prompt
+
 ### Requirement: Injected I/O for testability
 
 The session MUST depend on injected audio, wake-word, STT, TTS, and DocOracle
 collaborators so that a full conversation can be exercised with fakes and
-without audio hardware.
+without audio hardware, network, or an API key. Blocking device reads MUST run
+off the event loop (a worker thread) so the wake-word watcher and stop requests
+are not starved.
 
 #### Scenario: Session runs with fakes
 - **WHEN** the session is constructed with fake collaborators
 - **THEN** a complete simulated turn runs without accessing real devices or the network
+
+#### Scenario: Graceful shutdown
+- **WHEN** a stop is requested (e.g. Ctrl-C)
+- **THEN** the loop ends after the current step, the device streams are closed, and the HTTP clients are closed
