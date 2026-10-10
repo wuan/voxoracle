@@ -167,13 +167,48 @@ def resolve_mistral_api_key(settings: Settings) -> str | None:
     over a ``.env`` entry, mirroring the ``VXORACLE_*`` precedence. Returns
     ``None`` when no key is configured.
     """
-    for candidate in (
-        settings.mistral.api_key,
-        os.environ.get("MISTRAL_API_KEY"),
-        _dotenv_value("MISTRAL_API_KEY"),
-        os.environ.get("LLM_API_KEY"),
-        _dotenv_value("LLM_API_KEY"),
+    return _resolve_mistral_api_key(settings)[0]
+
+
+def mistral_api_key_source(settings: Settings) -> str | None:
+    """Return a short human-readable label for where the Mistral key came from.
+
+    Never returns the key itself. Labels: ``"VXORACLE_MISTRAL__API_KEY (env)"``,
+    ``"VXORACLE_MISTRAL__API_KEY (.env)"``, ``"config.yaml"``, the environment
+    variables (``"MISTRAL_API_KEY (env)"`` / ``"LLM_API_KEY (env)"``) or their
+    ``.env`` entries (``".env (MISTRAL_API_KEY)"`` / ``".env (LLM_API_KEY)"``).
+    Returns ``None`` when no key is configured.
+    """
+    return _resolve_mistral_api_key(settings)[1]
+
+
+def _resolve_mistral_api_key(settings: Settings) -> tuple[str | None, str | None]:
+    """Resolve the Mistral key and its source label without exposing the key."""
+    if settings.mistral.api_key:
+        # ``mistral.api_key`` is fed by config.yaml or VXORACLE_MISTRAL__API_KEY
+        # (env or .env); pydantic merges them, so attribute the env var when set.
+        if os.environ.get("VXORACLE_MISTRAL__API_KEY"):
+            return settings.mistral.api_key, "VXORACLE_MISTRAL__API_KEY (env)"
+        if _dotenv_value("VXORACLE_MISTRAL__API_KEY"):
+            return settings.mistral.api_key, "VXORACLE_MISTRAL__API_KEY (.env)"
+        return settings.mistral.api_key, "config.yaml"
+    for name, label in (
+        ("MISTRAL_API_KEY", "MISTRAL_API_KEY (env)"),
+        ("LLM_API_KEY", "LLM_API_KEY (env)"),
     ):
-        if candidate:
-            return candidate
-    return None
+        if os.environ.get(name):
+            return os.environ[name], label
+    for name in ("MISTRAL_API_KEY", "LLM_API_KEY"):
+        value = _dotenv_value(name)
+        if value:
+            return value, f".env ({name})"
+    return None, None
+
+
+def resolve_models_dir(settings: Settings) -> Path:
+    """Return the wake-word ``models_dir`` as an absolute path.
+
+    Relative paths are resolved against the current directory so callers
+    (``doctor``/``setup``) can report and create a stable location.
+    """
+    return Path(settings.wakeword.models_dir).expanduser().resolve()

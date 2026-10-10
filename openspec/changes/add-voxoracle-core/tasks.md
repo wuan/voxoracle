@@ -62,9 +62,9 @@
 ## 8. WP7 — Config, packaging and Pi deployment
 
 - [x] 8.1 Implement the settings schema (Pydantic settings) and `config.yaml`/env loading matching `config.example.yaml`
-- [ ] 8.2 Implement `voxoracle setup` (wake-word model bootstrap) and `voxoracle doctor` (devices, models, DocOracle status)
+- [x] 8.2 Implement `voxoracle setup` (wake-word model bootstrap) and `voxoracle doctor` (devices, models, DocOracle status)
 - [ ] 8.3 Finish `voxoracle run` for the target device
-- [ ] 8.4 Add a systemd unit and an install script; start on boot
+- [x] 8.4 Add a systemd unit and an install script; start on boot
 - [ ] 8.5 Verify `voxoracle run` on a Pi after install and document the hardware setup
 
 ## 9. WP8 — Quality, CI and release hardening
