@@ -121,3 +121,44 @@ def test_serve_forwards_sigint_to_the_running_session(monkeypatch) -> None:
 
     assert session.stopped
     assert components.aclosed
+
+
+def _patch_build_hardware(monkeypatch, *, input_stream, output_stream) -> None:
+    """Swap the device backend and wake-word resolution for fakes."""
+
+    class _FakeBackend:
+        def __init__(self, settings: object) -> None:
+            pass
+
+        def open_configured_input(self) -> object:
+            return input_stream
+
+        def open_configured_output(self, sample_rate: int) -> object:
+            return output_stream
+
+    import voxoracle.audio.sounddevice_backend as backend_mod
+    import voxoracle.wakeword.detector as detector_mod
+
+    monkeypatch.setattr(backend_mod, "SoundDeviceBackend", _FakeBackend)
+    monkeypatch.setattr(detector_mod, "resolve_model_path", lambda *a, **k: _raise_model())
+
+
+def _raise_model() -> object:
+    from voxoracle.wakeword.errors import WakeWordModelNotFoundError
+
+    raise WakeWordModelNotFoundError("franz")
+
+
+def test_build_session_closes_both_streams_when_a_later_step_fails(tmp_path, monkeypatch) -> None:
+    # A failure after both streams are open (here: the wake-word model cannot be
+    # resolved) must close the capture *and* playback streams, not just the input.
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("MISTRAL_API_KEY", "test-key")
+    audio_in = _Closable()
+    audio_out = _Closable()
+    _patch_build_hardware(monkeypatch, input_stream=audio_in, output_stream=audio_out)
+
+    with pytest.raises(Exception, match="franz"):
+        build_session(Settings())
+
+    assert audio_in.closed and audio_out.closed

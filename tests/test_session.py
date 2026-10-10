@@ -649,6 +649,97 @@ def test_session_can_be_rerun_after_a_stop() -> None:
     assert session.state is SessionState.IDLE
 
 
+def test_listen_for_wake_survives_a_device_read_failure() -> None:
+    # A transient read failure during IDLE must not terminate the session; the
+    # loop logs and retries, so the wake word is still heard afterwards.
+    class FlakyInput(FakeAudioInput):
+        def __init__(self) -> None:
+            super().__init__([])
+            self.calls = 0
+
+        def read_frame(self) -> np.ndarray:
+            self.calls += 1
+            if self.calls <= 2:
+                raise OSError("usb-audio hiccup")
+            return frame(WAKE)
+
+    audio = FlakyInput()
+    session, detector, _t, _c, _p = build_session(audio)
+
+    async def scenario() -> None:
+        task = asyncio.create_task(session.run())
+        while detector.triggered == 0:
+            await asyncio.sleep(0)
+        session.request_stop()
+        await asyncio.wait_for(task, timeout=2.0)
+
+    asyncio.run(scenario())
+
+    assert detector.triggered == 1
+    assert session.state is SessionState.IDLE
+
+
+def test_barge_in_awaits_the_in_flight_read_before_returning() -> None:
+    # The barge-in watcher reads in a worker thread; when playback ends it must
+    # finish that read before _speak returns, so no second reader touches the
+    # capture stream (concurrent reads on one PortAudio stream are unsupported).
+    import threading
+
+    class SingleReaderInput(FakeAudioInput):
+        def __init__(self) -> None:
+            super().__init__([])
+            self._lock = threading.Lock()
+            self.concurrent = False
+            self.in_read = 0
+            self.first_started = threading.Event()
+            self.release = threading.Event()
+
+        def read_frame(self) -> np.ndarray:
+            with self._lock:
+                self.in_read += 1
+                if self.in_read > 1:
+                    self.concurrent = True
+            try:
+                first = not self.first_started.is_set()
+                self.first_started.set()
+                if first:
+                    # Playback (and the watcher) start while this read blocks;
+                    # it unblocks only when the test releases it.
+                    self.release.wait(timeout=5.0)
+                return frame(0)
+            finally:
+                with self._lock:
+                    self.in_read -= 1
+
+    audio = SingleReaderInput()
+    player = FakePlayer()
+    player.block_next_speak()
+    session, _detector, _t, _c, _p = build_session(
+        audio,
+        player=player,
+        config=SessionConfig(sample_rate=SAMPLE_RATE, frame_samples=FRAME_SAMPLES),
+    )
+    in_flight_when_done: list[int] = []
+
+    async def scenario() -> None:
+        # The watcher's first read blocks; once it is in flight, finish playback
+        # (via interrupt) so _speak's finally must await that read.
+        speak = asyncio.create_task(session._speak("Hallo"))  # type: ignore[attr-defined]
+        while not audio.first_started.is_set():
+            await asyncio.sleep(0)
+        player.interrupt()
+        await asyncio.sleep(0)  # let speak wind down; the read is still blocked
+        audio.release.set()
+        await asyncio.wait_for(speak, timeout=2.0)
+        # _speak must have waited for the in-flight read: no orphaned reader.
+        in_flight_when_done.append(audio.in_read)
+
+    asyncio.run(scenario())
+
+    assert in_flight_when_done == [0]  # the read finished before _speak returned
+    assert not audio.concurrent
+
+
 def test_session_config_follow_up_enabled_flag() -> None:
     assert not SessionConfig(
         sample_rate=SAMPLE_RATE, frame_samples=FRAME_SAMPLES, follow_up=False

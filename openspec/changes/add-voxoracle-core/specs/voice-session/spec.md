@@ -57,6 +57,10 @@ question without requiring a further activation). Barge-in MUST be disabled when
 - **WHEN** the wake word is detected while the answer is being spoken
 - **THEN** playback stops and the session begins a new turn
 
+#### Scenario: Single reader on the capture stream
+- **WHEN** a barge-in ends playback
+- **THEN** the in-flight detector read is awaited before recording or listening resumes, so only one thread ever reads the capture stream (frames read during playback are discarded, so speech begun before the wake word completes may be partly lost)
+
 #### Scenario: Interrupt is scheduled on the event loop
 - **WHEN** the wake-word watcher fires during playback
 - **THEN** `SpeechPlayer.interrupt` is invoked from the event-loop thread (scheduled with `call_soon_threadsafe`), since the interrupt hook is an `asyncio.Event` and is not thread-safe

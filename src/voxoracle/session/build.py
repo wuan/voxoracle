@@ -79,9 +79,10 @@ def build_session(settings: Settings) -> SessionComponents:
 
     backend = SoundDeviceBackend(settings.audio)
     frame_samples = round(settings.audio.sample_rate * settings.audio.frame_ms / 1000)
-    # Open the input stream first but close it if a later step fails, so a
-    # half-built session does not leak the capture device.
+    # Open the input first, then the output; if any later step fails, close both
+    # so a half-built session does not leak the capture or playback device.
     audio_input = backend.open_configured_input()
+    audio_output: AudioOutput | None = None
     try:
         audio_output = backend.open_configured_output(settings.tts.sample_rate)
         model_path = resolve_model_path(settings.wakeword.model, resolve_models_dir(settings))
@@ -110,7 +111,10 @@ def build_session(settings: Settings) -> SessionComponents:
         )
     except BaseException:
         # ``BaseException`` (not Exception) so a KeyboardInterrupt during the
-        # build still closes the already-opened capture device.
+        # build still closes the already-opened devices. ``audio_output`` may be
+        # None if opening the output itself failed.
+        if audio_output is not None:
+            audio_output.close()
         audio_input.close()
         raise
     player = SpeechPlayer(synthesizer, audio_output)

@@ -24,7 +24,6 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
-from contextlib import suppress
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol, runtime_checkable
@@ -48,6 +47,14 @@ _LOGGER = logging.getLogger(__name__)
 #: spinning the loop and spawning unbounded worker threads. Well below the 30 ms
 #: frame time, so it does not affect detection latency.
 _IDLE_POLL_SECONDS = 0.001
+
+#: Backoff after a failed device read before retrying, so a broken/hiccuping
+#: microphone cannot turn the always-on loop into a hot error spin.
+_READ_ERROR_BACKOFF_SECONDS = 0.05
+
+# On the Pi 3 (single Cortex-A53) the per-frame ``asyncio.to_thread`` dispatch
+# (~33/s on the always-on path) is a known cost; a single dedicated reader
+# thread would be cheaper. Deferred to a follow-up (see tasks.md 8.6).
 
 
 class SessionState(StrEnum):
@@ -272,9 +279,17 @@ class VoiceSession:
         """Feed frames to the detector until it triggers or a stop is requested.
 
         Returns ``True`` when the wake word fired, ``False`` on a stop request.
+        A device read failure (e.g. a transient USB-audio hiccup) is logged and
+        retried after a short backoff rather than terminating the session, the
+        same resilience :meth:`_run_turn_chain` gives a turn.
         """
         while not self._stop.is_set():
-            frame = await asyncio.to_thread(self._input.read_frame)
+            try:
+                frame = await asyncio.to_thread(self._input.read_frame)
+            except Exception:  # noqa: BLE001 - a device hiccup must not kill the loop
+                _LOGGER.exception("audio read failed while listening; retrying")
+                await asyncio.sleep(_READ_ERROR_BACKOFF_SECONDS)
+                continue
             if self._stop.is_set():
                 return False
             if self._detector.process(frame):
@@ -336,29 +351,52 @@ class VoiceSession:
         from the event-loop thread, but still schedules ``interrupt`` with
         ``call_soon_threadsafe`` so the hook stays safe under any detector
         threading model.
+
+        The watcher is stopped cooperatively (a sentinel event, not
+        ``Task.cancel``) and awaited before returning, so its in-flight blocking
+        ``read_frame`` finishes here. Cancelling the task would abandon the
+        worker thread mid-read, and the next phase (recording, or listening
+        again) would then read the same PortAudio stream concurrently, which the
+        device does not support.
         """
         if not text.strip():
             return False
         self._set_state(SessionState.SPEAKING)
         self._detector.reset()
+        stop_watch: asyncio.Event | None = None
         watcher: asyncio.Task[None] | None = None
         if self._config.barge_in:
-            watcher = asyncio.create_task(self._watch_for_barge_in())
+            stop_watch = asyncio.Event()
+            watcher = asyncio.create_task(self._watch_for_barge_in(stop_watch))
         speak = asyncio.create_task(self._player.speak(text, voice=self._config.voice))
         try:
             await speak
         finally:
             if watcher is not None:
-                watcher.cancel()
-                with suppress(asyncio.CancelledError):
-                    await watcher
+                assert stop_watch is not None
+                stop_watch.set()
+                await watcher
         return self._player.interrupted
 
-    async def _watch_for_barge_in(self) -> None:
-        """Feed frames to the detector until it fires, then interrupt playback."""
-        while True:
-            frame = await asyncio.to_thread(self._input.read_frame)
-            if self._stop.is_set():
+    async def _watch_for_barge_in(self, stop: asyncio.Event) -> None:
+        """Feed frames to the detector until it fires or ``stop`` is set.
+
+        Each read is awaited to completion, so the watcher never leaves a read
+        running when it returns; the caller awaits it before reading again.
+
+        Frames consumed here are discarded, so speech that starts while the
+        answer is still playing (before the wake word completes) is partly lost
+        by the time recording begins - inherent to listening on one stream, and
+        worth tuning on real hardware (see tasks.md 8.6).
+        """
+        while not stop.is_set() and not self._stop.is_set():
+            try:
+                frame = await asyncio.to_thread(self._input.read_frame)
+            except Exception:  # noqa: BLE001 - a device hiccup must not kill the loop
+                _LOGGER.exception("audio read failed while watching for barge-in")
+                await asyncio.sleep(_READ_ERROR_BACKOFF_SECONDS)
+                continue
+            if stop.is_set() or self._stop.is_set():
                 return
             if self._detector.process(frame):
                 loop = asyncio.get_running_loop()

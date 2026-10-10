@@ -67,7 +67,7 @@
 - [x] 8.3 Finish `voxoracle run` for the target device
 - [x] 8.4 Add a systemd unit and an install script; start on boot
 - [ ] 8.5 Verify `voxoracle run` on a Pi after install and document the hardware setup
-- [ ] 8.6 On-device (TTS): verify the real barge-in path (a write on a `Pa_AbortStream`-aborted stream restarts playback for the next utterance) and confirm Mistral's live `pcm` sample rate and SSE framing (including multi-line `data:` handling)
+- [ ] 8.6 On-device (TTS): verify the real barge-in path (a write on a `Pa_AbortStream`-aborted stream restarts playback for the next utterance) and confirm Mistral's live `pcm` sample rate and SSE framing (including multi-line `data:` handling); measure the always-on per-frame `asyncio.to_thread` cost (a dedicated reader thread may be cheaper on the Pi 3) and the barge-in frame loss (speech begun before the wake word completes)
 
 ## 9. WP8 — Quality, CI and release hardening
 
