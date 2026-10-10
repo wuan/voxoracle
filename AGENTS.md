@@ -14,7 +14,7 @@ VoxOracle is a **headless, voice-only appliance frontend** for DocOracle
 retrieval or LLM logic**: it is audio in -> text -> DocOracle `POST /ask` ->
 text -> audio out.
 
-- Activation word **"Franz"**, detected locally with **openWakeWord**.
+- Activation word **"Hey Franz"**, detected locally with **openWakeWord**.
 - **Cloud STT and cloud TTS**; **German first**.
 - Python **3.13+**, managed with **uv** (`pyproject.toml` + `uv.lock`).
 - Behaviour is specified with **OpenSpec** under `openspec/`.

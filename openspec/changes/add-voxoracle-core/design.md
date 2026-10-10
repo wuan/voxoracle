@@ -5,7 +5,7 @@
 VoxOracle is a new repository. The only existing content is a README describing
 a browser-based UI, which contradicts the agreed appliance design. The target is
 a Raspberry Pi 3 running 64-bit (aarch64) Debian-based Raspberry Pi OS,
-headless, with a microphone and a speaker. It listens for the wake word "Franz" locally, captures
+headless, with a microphone and a speaker. It listens for the wake word "Hey Franz" locally, captures
 a question, transcribes it with a cloud STT service, sends it to DocOracle
 `POST /ask`, and speaks the grounded answer with a cloud TTS service. German
 comes first. VoxOracle owns no retrieval or LLM logic.
@@ -71,21 +71,22 @@ parallel once WP2 freezes the interfaces.
 ### Wake-word model acquisition (WP3)
 
 openWakeWord ships pretrained models for `alexa`, `hey_mycroft`, `hey_jarvis`,
-`hey_marvin`, and command phrases such as `timer`/`weather` — but **no "Franz"**
-model, and no such model exists in the public community collections. Training a
-purpose-built model requires openWakeWord's separate synthetic-data pipeline
-(piper TTS for positive clips plus large negative corpora, then the automated
-training notebook); that is a GPU/large-dataset workflow that cannot run in CI
-and is out of scope for WP3's code deliverable.
+`hey_marvin`, and command phrases such as `timer`/`weather` — but **no "Hey
+Franz"** model, and no such model exists in the public community collections.
+Training a purpose-built model requires openWakeWord's separate synthetic-data
+pipeline (piper TTS for positive clips plus large negative corpora, then the
+automated training notebook); that is a GPU/large-dataset workflow that cannot
+run in CI and is out of scope for WP3's code deliverable.
 
 Decision: make the model path **fully configurable** (`wakeword.model` as a name
-or an explicit `.onnx` path, plus `wakeword.models_dir`), and until a real
-"franz.onnx" is installed use a clearly-labelled **pretrained placeholder**
-(`hey_jarvis`). Everything else in WP3 — the detector protocol, the ONNX
-streaming adapter with 80 ms buffering, the configurable threshold, the trigger
-event, and the tests — is implemented and verified against both synthetic
-fixtures and real hardware. Installing the real "Franz" model later is a file
-drop via `voxoracle setup`, with no code changes.
+or an explicit `.onnx` path, plus `wakeword.models_dir`), and until the real
+custom model `hey-franz.onnx` is installed use a clearly-labelled **pretrained
+placeholder** (`hey_jarvis`, the bundled default: it detects "hey jarvis").
+Everything else in WP3 — the detector protocol, the ONNX streaming adapter with
+80 ms buffering, the configurable threshold, the trigger event, and the tests —
+is implemented and verified against both synthetic fixtures and real hardware.
+Installing the real "Hey Franz" model later is a file drop via `voxoracle setup`,
+with no code changes.
 
 *Alternatives considered:* (a) training a custom model off-device now — rejected
 as infeasible in this environment (no synthetic-data pipeline, no large negative
@@ -198,7 +199,7 @@ README; no data or public interface exists yet.
   the Mistral API key scope covers Voxtral transcription and TTS (the user
   intends one key for DocOracle and VoxOracle).
 - Which wake-word model on the target Pi? Resolved to openWakeWord's ONNX
-  backend on 64-bit Raspberry Pi OS (aarch64). No pretrained "Franz" model
-  exists, so WP3 ships a configurable model path defaulting to the `hey_jarvis`
-  placeholder; a purpose-trained "franz.onnx" is installed via `voxoracle setup`
-  (WP7) once produced, with no code changes.
+  backend on 64-bit Raspberry Pi OS (aarch64). No pretrained "Hey Franz" model
+  exists, so WP3 ships a configurable model path defaulting to the bundled
+  `hey_jarvis` placeholder; a purpose-trained `hey-franz.onnx` is installed via
+  `voxoracle setup` (WP7) once produced, with no code changes.

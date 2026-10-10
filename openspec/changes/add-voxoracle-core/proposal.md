@@ -37,7 +37,7 @@ separately against the capabilities defined by this change.
 
 - `voice-session`: the wake → record → transcribe → ask → speak state machine,
   including error paths, barge-in, and optional follow-ups.
-- `wake-word`: local detection of the activation word "Franz" with openWakeWord.
+- `wake-word`: local detection of the activation word "Hey Franz" with openWakeWord.
 - `cloud-stt`: the provider-agnostic cloud speech-to-text capability.
 - `cloud-tts`: the provider-agnostic cloud text-to-speech capability.
 - `docoracle-client`: the typed HTTP client for DocOracle `/ask`, `/health`, and

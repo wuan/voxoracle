@@ -10,7 +10,7 @@ context: |
 
   Constraints an agent cannot infer from the code:
   - The device has no screen; the CLI is the operator surface.
-  - The wake word "Franz" is detected locally with openWakeWord; STT and TTS are
+  - The wake word "Hey Franz" is detected locally with openWakeWord; STT and TTS are
     cloud services. German comes first.
   - The always-on local path must stay lightweight (Pi 3: 1 GB RAM, Cortex-A53).
   - Python 3.13+ is managed with uv; behaviour is specified with OpenSpec.

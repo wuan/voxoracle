@@ -40,9 +40,10 @@ class AudioSettings(BaseModel):
 
 class WakeWordSettings(BaseModel):
     engine: str = "openwakeword"
-    # Model name ("franz") or an explicit .onnx path; falls back to a placeholder
-    # model until a "franz" model is provided (see design.md).
-    model: str = "franz"
+    # Custom model name ("hey-franz") or an explicit .onnx path. The bundled
+    # default is the clearly-labelled placeholder hey_jarvis, used until a
+    # purpose-trained hey-franz model is provided (see design.md).
+    model: str = "hey-franz"
     models_dir: str = "models"
     threshold: float = Field(default=0.5, ge=0.0, le=1.0)
 

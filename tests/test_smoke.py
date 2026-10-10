@@ -105,8 +105,8 @@ def test_cli_setup_reports_bare_name_expected_path(tmp_path, monkeypatch) -> Non
     monkeypatch.chdir(tmp_path)
     result = runner.invoke(app, ["setup"])
     assert result.exit_code == 0
-    assert str(tmp_path / "models" / "franz.onnx") in result.stdout
-    assert "franz.onnx.onnx" not in result.stdout
+    assert str(tmp_path / "models" / "hey-franz.onnx") in result.stdout
+    assert "hey-franz.onnx.onnx" not in result.stdout
 
 
 def test_cli_setup_handles_explicit_model_path(tmp_path, monkeypatch) -> None:
