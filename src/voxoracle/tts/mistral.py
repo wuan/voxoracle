@@ -2,7 +2,9 @@
 
 Uses Mistral's speech endpoint ``POST {base_url}/audio/speech`` with model
 ``voxtral-mini-tts-2603``. The request carries the text (``input``), a ``voice_id``,
-a ``response_format`` and a ``stream`` flag.
+a ``response_format`` and a ``stream`` flag. Mistral selects the voice by
+``voice_id`` and has no separate language field, so the configured language
+provides the default voice when no explicit voice is set (German by default).
 
 Two response shapes are supported:
 
@@ -38,6 +40,9 @@ from voxoracle.tts.protocol import SpeechChunk
 
 SPEECH_PATH = "/audio/speech"
 DEFAULT_MODEL = "voxtral-mini-tts-2603"
+DEFAULT_LANGUAGE = "de"
+#: The configured language doubles as the default voice id (Mistral selects the
+#: voice by ``voice_id`` and has no separate language field).
 DEFAULT_VOICE = "de"
 DEFAULT_SAMPLE_RATE = 24000
 
@@ -88,7 +93,8 @@ class MistralSpeechSynthesizer:
         client: MistralAudioClient,
         *,
         model: str = DEFAULT_MODEL,
-        voice: str = DEFAULT_VOICE,
+        language: str = DEFAULT_LANGUAGE,
+        voice: str | None = None,
         response_format: str = "pcm",
         sample_rate: int = DEFAULT_SAMPLE_RATE,
         stream: bool = True,
@@ -103,7 +109,11 @@ class MistralSpeechSynthesizer:
             raise ValueError(f"sample_rate must be positive, got {sample_rate}")
         self._client = client
         self._model = model
-        self._voice = voice
+        self._language = language
+        # Mistral selects the voice by ``voice_id``; the configured language picks
+        # the default voice when no explicit voice is given, so a German language
+        # setting yields a German voice.
+        self._voice = voice or language
         self._response_format = response_format
         self._sample_rate = sample_rate
         self._stream = stream
@@ -111,6 +121,10 @@ class MistralSpeechSynthesizer:
     @property
     def model(self) -> str:
         return self._model
+
+    @property
+    def language(self) -> str:
+        return self._language
 
     @property
     def voice(self) -> str:

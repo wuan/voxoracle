@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from voxoracle.tts.mistral import (
+    DEFAULT_LANGUAGE,
     DEFAULT_MODEL,
     DEFAULT_SAMPLE_RATE,
     DEFAULT_VOICE,
@@ -14,6 +15,7 @@ from voxoracle.tts.player import SpeechPlayer
 from voxoracle.tts.protocol import SpeechChunk, Synthesizer
 
 __all__ = [
+    "DEFAULT_LANGUAGE",
     "DEFAULT_MODEL",
     "DEFAULT_SAMPLE_RATE",
     "DEFAULT_VOICE",

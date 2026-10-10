@@ -20,7 +20,9 @@ consume the audio directly.
 The TTS implementation MUST select its cloud provider, model, voice, and
 language from configuration and MUST default to a German voice. The default
 provider is Mistral, using the speech-synthesis endpoint
-(``POST {base_url}/audio/speech``, model ``voxtral-mini-tts-2603``).
+(``POST {base_url}/audio/speech``, model ``voxtral-mini-tts-2603``). Mistral
+selects the voice by ``voice_id`` and has no separate language field, so the
+configured language provides the default voice when no explicit voice is set.
 
 #### Scenario: Provider, model and voice selected from configuration
 - **WHEN** the configuration names a TTS provider, model and voice
@@ -28,7 +30,11 @@ provider is Mistral, using the speech-synthesis endpoint
 
 #### Scenario: Default voice is German
 - **WHEN** synthesis runs without an explicit voice
-- **THEN** the configured German voice and language are used
+- **THEN** the configured language selects the German voice
+
+#### Scenario: Language selects the default voice
+- **WHEN** the configured language is set and no explicit voice is given
+- **THEN** the request uses the language as the voice id
 
 #### Scenario: Per-call voice override
 - **WHEN** the caller passes a voice for a single utterance
@@ -68,11 +74,17 @@ backend requests a streaming response and consumes the provider's
 ### Requirement: Barge-in stops playback
 
 The playback layer MUST expose a stop hook that stops audio output promptly and
-cancels the in-flight provider request when the session requests a barge-in.
+cancels the in-flight provider request when the session requests a barge-in,
+without waiting for the provider to deliver another chunk or for the read
+timeout to elapse.
 
 #### Scenario: Playback is interrupted
 - **WHEN** the session requests barge-in during playback
 - **THEN** audio output stops, the provider stream is closed, and no further chunks are played
+
+#### Scenario: A stalled provider does not delay barge-in
+- **WHEN** barge-in is requested while the provider is quiet
+- **THEN** playback stops and the in-flight request is cancelled promptly, without waiting for the read timeout
 
 #### Scenario: Interrupt hook is available to the session
 - **WHEN** the wake-word detector fires during playback

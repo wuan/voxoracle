@@ -229,6 +229,29 @@ def test_request_shape_uses_german_defaults() -> None:
     assert seen["input"] == "Wie funktioniert das?"
 
 
+def test_language_selects_default_voice() -> None:
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.update(json.loads(request.content))
+        return httpx.Response(200, content=sse({"type": "speech.audio.done", "usage": {}}))
+
+    # With no explicit voice, the configured language provides the voice id.
+    synthesize(handler, language="en")
+    assert seen["voice_id"] == "en"
+
+
+def test_explicit_voice_overrides_language() -> None:
+    seen: dict = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.update(json.loads(request.content))
+        return httpx.Response(200, content=sse({"type": "speech.audio.done", "usage": {}}))
+
+    synthesize(handler, language="de", voice="anna")
+    assert seen["voice_id"] == "anna"
+
+
 def test_voice_and_model_overrides() -> None:
     seen: dict = {}
 
@@ -651,8 +674,52 @@ def test_barge_in_can_interrupt_during_a_blocking_write() -> None:
     assert player.interrupted
     assert output.stopped
     # The first chunk was played; barge-in landed during its blocking write, so
-    # the second chunk is abandoned before it is written.
-    assert synth.yielded == 2
+    # the second chunk is never fetched or written.
+    assert synth.yielded == 1
+    assert len(output.written) == 1
+
+
+class StallingSynthesizer:
+    """Yields one chunk, then blocks (as a quiet provider would) until closed."""
+
+    def __init__(self) -> None:
+        self.closed = False
+        self.stalled = threading.Event()
+
+    async def _gen(self) -> AsyncIterator[SpeechChunk]:
+        try:
+            yield SpeechChunk(samples=np.zeros(4, dtype=np.int16), sample_rate=SAMPLE_RATE)
+            # Provider goes quiet: wait forever unless the stream is cancelled.
+            self.stalled.set()
+            await asyncio.Event().wait()
+        finally:
+            self.closed = True
+
+    def synthesize(self, text: str, *, voice: str | None = None) -> AsyncIterator[SpeechChunk]:
+        return self._gen()
+
+
+def test_barge_in_cancels_a_stalled_stream_promptly() -> None:
+    # A slow/quiet provider must not defer barge-in until the read timeout: the
+    # interrupt event must cancel the pending chunk fetch and close the stream.
+    synth = StallingSynthesizer()
+    output = FakeOutput()
+    player = SpeechPlayer(synth, output)
+
+    async def scenario() -> None:
+        speak_task = asyncio.create_task(player.speak("Ein langer Satz"))
+        # First chunk plays; the stream then stalls waiting for the next delta.
+        while not synth.stalled.is_set():
+            await asyncio.sleep(0)
+        player.interrupt()
+        # speak() must return without a read timeout elapsing.
+        await asyncio.wait_for(speak_task, timeout=1.0)
+
+    run(scenario())
+
+    assert player.interrupted
+    assert synth.closed  # the in-flight provider stream was cancelled
+    assert output.stopped
     assert len(output.written) == 1
 
 
