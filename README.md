@@ -171,6 +171,7 @@ tts:
   model: voxtral-mini-tts-2603 # Voxtral speech synthesis
   language: de
   voice: de                    # German voice (confirmed on-device in WP7)
+  sample_rate: 24000           # Provider PCM rate in Hz (confirmed in WP7)
 
 session:
   max_record_seconds: 15       # Maximum length of a spoken question

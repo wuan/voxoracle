@@ -70,6 +70,9 @@ tts:
   # Provider voice id; "de" is the German default and is confirmed on-device
   # during WP7 (set an explicit voice id if the preset differs).
   voice: de
+  # Sample rate (Hz) of the provider's PCM audio. Mistral does not publish it;
+  # correct it here if the device plays at the wrong speed (confirmed in WP7).
+  sample_rate: 24000
 
 session:
   # Maximum length of a single spoken question, in seconds.

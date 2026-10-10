@@ -70,6 +70,10 @@ class TTSSettings(BaseModel):
     language: str = "de"
     # German voice id sent to the provider; WP7 confirms the exact preset on-device.
     voice: str = "de"
+    # Sample rate of the provider's PCM output in Hz. Mistral does not publish it,
+    # so it is configurable and confirmed on-device in WP7; the output layer
+    # resamples this to the device rate.
+    sample_rate: int = Field(default=24000, gt=0)
 
 
 class SessionSettings(BaseModel):

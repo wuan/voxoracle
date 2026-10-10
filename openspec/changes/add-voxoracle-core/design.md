@@ -119,7 +119,8 @@ sending `input`, `voice_id` (default `de`), `response_format` (`pcm`) and
 terminated by `speech.audio.done`; the vendor's `pcm` format is raw
 little-endian float32 samples, which the backend converts to the mono 16-bit PCM
 the WP2 output layer plays. Mistral does not publish the `pcm` sample rate, so it
-is configurable (default 24 kHz) and confirmed on-device in WP7. A non-streaming
+is configurable (`tts.sample_rate`, default 24 kHz; the player resamples chunks
+to the device rate) and confirmed on-device in WP7. A non-streaming
 `wav` response (`{"audio_data": "<base64>"}`) is also decodable.
 
 Speech playback lives in a provider-agnostic `SpeechPlayer` that writes each

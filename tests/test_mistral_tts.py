@@ -12,6 +12,7 @@ from collections.abc import AsyncIterator
 import httpx
 import numpy as np
 import pytest
+from pydantic import ValidationError
 
 from voxoracle.audio.protocols import AudioOutput
 from voxoracle.config import load_settings
@@ -632,6 +633,7 @@ def test_tts_defaults_are_mistral_german(tmp_path, monkeypatch) -> None:
     assert settings.tts.model == "voxtral-mini-tts-2603"
     assert settings.tts.language == "de"
     assert settings.tts.voice == "de"
+    assert settings.tts.sample_rate == 24000
 
 
 def test_tts_voice_configurable(tmp_path, monkeypatch) -> None:
@@ -641,3 +643,18 @@ def test_tts_voice_configurable(tmp_path, monkeypatch) -> None:
     settings = load_settings(config)
     assert settings.tts.voice == "anna"
     assert settings.tts.model == "custom-tts"
+
+
+def test_tts_sample_rate_configurable(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    config = tmp_path / "config.yaml"
+    config.write_text("tts:\n  sample_rate: 16000\n", encoding="utf-8")
+    assert load_settings(config).tts.sample_rate == 16000
+
+
+def test_tts_sample_rate_must_be_positive(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    config = tmp_path / "config.yaml"
+    config.write_text("tts:\n  sample_rate: 0\n", encoding="utf-8")
+    with pytest.raises(ValidationError):
+        load_settings(config)
