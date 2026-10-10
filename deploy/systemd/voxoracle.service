@@ -3,6 +3,9 @@ Description=VoxOracle voice appliance (wake word -> STT -> DocOracle /ask -> TTS
 Documentation=https://github.com/wuan/voxoracle
 After=network-online.target sound.target
 Wants=network-online.target
+# Bound the fail-fast retry loop while `run` is still a stub (WP6).
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 # Runs as the invoking (non-root) user; paths are substituted by install.sh.
@@ -15,12 +18,10 @@ Environment=PATH=__HOME__/.local/bin:/usr/local/bin:/usr/bin:/bin
 ExecStart=__INSTALL_DIR__/.venv/bin/voxoracle run
 
 # `voxoracle run` is a stub until WP6 lands: it exits non-zero with a clear
-# message, so the service retries with backoff and does not spin. Remove the
-# StartLimit once WP6 is implemented.
+# message, so the service fail-fasts and retries with backoff (bounded by the
+# StartLimit in [Unit]) instead of spinning.
 Restart=on-failure
 RestartSec=5
-StartLimitIntervalSec=300
-StartLimitBurst=5
 
 # Log to the journal:  journalctl -u voxoracle -f
 StandardOutput=journal
