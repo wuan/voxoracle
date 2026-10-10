@@ -9,6 +9,7 @@ PortAudio, openWakeWord or a network.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from voxoracle.audio.protocols import AudioInput, AudioOutput
@@ -18,6 +19,8 @@ from voxoracle.mistral.client import MistralAudioClient
 from voxoracle.session.machine import SessionConfig, VoiceSession
 from voxoracle.stt.protocol import Transcriber
 from voxoracle.tts.protocol import Synthesizer
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class ConfigurationError(Exception):
@@ -35,21 +38,37 @@ class SessionComponents:
     docoracle_client: DocOracleClient | None = None
 
     def close(self) -> None:
-        """Release device streams. Async clients are closed by :meth:`aclose`."""
+        """Release device streams. Async clients are closed by :meth:`aclose`.
+
+        Each close is attempted independently: a failing device close (e.g. an
+        already-removed USB device) must not skip the other stream.
+        """
         for close in (
             getattr(self.audio_input, "close", None),
             getattr(self.audio_output, "close", None),
         ):
             if callable(close):
-                close()
+                try:
+                    close()
+                except Exception:  # noqa: BLE001 - shutdown is best-effort
+                    _LOGGER.debug("failed to close an audio stream", exc_info=True)
 
     async def aclose(self) -> None:
-        """Close device streams first, then the HTTP clients."""
+        """Close device streams, then both HTTP clients (each independently).
+
+        A failure closing one client must not prevent the other from closing.
+        """
         self.close()
-        if self.mistral_client is not None:
-            await self.mistral_client.aclose()
-        if self.docoracle_client is not None:
-            await self.docoracle_client.aclose()
+        for label, client in (
+            ("mistral", self.mistral_client),
+            ("docoracle", self.docoracle_client),
+        ):
+            if client is None:
+                continue
+            try:
+                await client.aclose()
+            except Exception:  # noqa: BLE001 - shutdown is best-effort
+                _LOGGER.debug("failed to close the %s client", label, exc_info=True)
 
 
 def build_session(settings: Settings) -> SessionComponents:

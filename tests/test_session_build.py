@@ -51,16 +51,24 @@ def test_session_components_aclose_closes_streams_and_clients() -> None:
 
 
 class _FakeSession:
-    def __init__(self, *, run_error: Exception | None = None, wait: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        run_error: Exception | None = None,
+        wait: bool = False,
+        ignore_stop: bool = False,
+    ) -> None:
         self.stopped = False
         self.ran = False
         self._run_error = run_error
         self._wait = wait
+        self._ignore_stop = ignore_stop
         self._release = asyncio.Event()
 
     def request_stop(self) -> None:
         self.stopped = True
-        self._release.set()
+        if not self._ignore_stop:
+            self._release.set()
 
     async def run(self) -> None:
         self.ran = True
@@ -126,8 +134,9 @@ def test_serve_forwards_sigint_to_the_running_session(monkeypatch) -> None:
 def test_serve_second_signal_forces_shutdown(monkeypatch) -> None:
     # A hung shutdown (the session ignores the first stop) must be escapable: a
     # second SIGINT raises KeyboardInterrupt out of the loop, unwinding _serve
-    # (which still closes the components).
-    session = _FakeSession(wait=True)
+    # (which still closes the components). The fake ignores the stop so the run
+    # would hang without the force path.
+    session = _FakeSession(wait=True, ignore_stop=True)
     components = _FakeComponents(session)
     monkeypatch.setattr(cli, "build_session", lambda settings: components)
 
@@ -135,8 +144,9 @@ def test_serve_second_signal_forces_shutdown(monkeypatch) -> None:
         task = asyncio.create_task(cli._serve(Settings()))
         while not session.ran:
             await asyncio.sleep(0)
-        os.kill(os.getpid(), signal.SIGINT)  # cooperative stop requested
+        os.kill(os.getpid(), signal.SIGINT)  # cooperative stop requested (ignored)
         await asyncio.sleep(0)
+        assert not task.done()  # the session is still running: force needed
         os.kill(os.getpid(), signal.SIGINT)  # force: raises out of the loop
         await asyncio.wait_for(task, timeout=2.0)
 
@@ -144,6 +154,7 @@ def test_serve_second_signal_forces_shutdown(monkeypatch) -> None:
     with pytest.raises(KeyboardInterrupt):
         asyncio.run(scenario())
 
+    assert session.stopped
     assert components.aclosed
 
 

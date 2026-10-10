@@ -130,6 +130,7 @@ class FakePlayer:
         self.spoken: list[str] = []
         self.interrupted = False
         self.speak_calls = 0
+        self.interrupt_calls = 0
         self._block_next = False
         self._gate = asyncio.Event()
 
@@ -147,6 +148,7 @@ class FakePlayer:
 
     def interrupt(self) -> None:
         self.interrupted = True
+        self.interrupt_calls += 1
         self._gate.set()
 
 
@@ -738,6 +740,34 @@ def test_barge_in_awaits_the_in_flight_read_before_returning() -> None:
 
     assert in_flight_when_done == [0]  # the read finished before _speak returned
     assert not audio.concurrent
+
+
+def test_barge_in_detected_as_playback_finishes_is_not_dropped() -> None:
+    # The wake word can land right as playback finishes. The watcher signals
+    # detection synchronously (an event) in addition to scheduling interrupt, so
+    # _speak reports the barge-in even when the scheduled interrupt callback has
+    # not run by the time playback completes (modelled here by a player whose
+    # interrupt() does not flip `interrupted`).
+    audio = FakeAudioInput([frame(WAKE)])  # the watcher detects immediately
+
+    class LatePlayer(FakePlayer):
+        async def speak(self, text: str, *, voice: str | None = None) -> None:
+            self.speak_calls += 1
+            self.spoken.append(text)
+            await asyncio.sleep(0)  # let the watcher detect + schedule interrupt
+
+        def interrupt(self) -> None:
+            # Record the request but leave `interrupted` False, as it would be
+            # before the queued callback actually runs.
+            self.interrupt_calls += 1
+
+    player = LatePlayer()
+    session, _detector, _t, _c, _p = build_session(audio, player=player)
+
+    interrupted = asyncio.run(session._speak("Ein Satz"))  # type: ignore[attr-defined]
+
+    assert interrupted is True
+    assert player.interrupted is False  # only the detection event carried it
 
 
 def test_stop_during_speaking_cuts_playback_short() -> None:
