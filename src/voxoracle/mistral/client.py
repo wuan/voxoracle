@@ -249,7 +249,16 @@ class MistralAudioClient:
                         # (the body is already partly consumed); surface it as the
                         # same typed error as the buffered path.
                         raise MistralTimeoutError(f"Mistral timed out at {path}: {exc}") from exc
-                    except httpx.TransportError as exc:
+                    except httpx.DecodingError as exc:
+                        # e.g. a corrupt compressed body; a malformed response, not
+                        # a connection failure.
+                        raise MistralResponseError(
+                            f"cannot decode Mistral stream at {path}: {exc}"
+                        ) from exc
+                    except httpx.RequestError as exc:
+                        # Any other request-level failure (transport, connection
+                        # reset, ...) is surfaced as the same typed error as the
+                        # buffered path, so callers catching MistralError see it.
                         raise MistralConnectionError(
                             f"connection lost mid-stream at {path}: {exc}"
                         ) from exc

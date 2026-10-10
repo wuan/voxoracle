@@ -509,6 +509,25 @@ def test_mid_stream_transport_error_is_a_typed_error() -> None:
     assert calls == 1
 
 
+def test_mid_stream_decoding_error_is_a_typed_error() -> None:
+    # httpx.DecodingError is a RequestError but not a TransportError; it must
+    # still surface as a typed Mistral error, not a raw httpx exception.
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(
+            200,
+            stream=_FailingStream(httpx.DecodingError("corrupt body")),
+            headers={"content-type": "text/event-stream"},
+        )
+
+    with pytest.raises(MistralResponseError):
+        synthesize(handler, retries=2)
+    assert calls == 1
+
+
 def test_stream_retry_then_success() -> None:
     calls = 0
 
