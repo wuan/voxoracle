@@ -36,6 +36,7 @@ from voxoracle.tts import (
     wav_to_int16,
 )
 from voxoracle.tts.mistral import pcm_float32_to_int16
+from voxoracle.tts.player import PLAY_SLICE_SECONDS
 from voxoracle.tts.protocol import Synthesizer
 
 SAMPLE_RATE = DEFAULT_SAMPLE_RATE
@@ -644,7 +645,8 @@ def test_playback_with_matching_rate_is_unchanged() -> None:
 
     run(player.speak("Hallo"))
 
-    assert output.written[0] is source  # resample is a no-op at equal rates
+    # resample is a no-op at equal rates, so the samples are unchanged.
+    assert np.array_equal(np.concatenate(output.written), source)
 
 
 class BlockingOutput(FakeOutput):
@@ -699,6 +701,9 @@ def test_barge_in_can_interrupt_during_a_blocking_write() -> None:
             await asyncio.sleep(0)
         # The loop is responsive during the blocking write, so barge-in lands now.
         player.interrupt()
+        # interrupt() must stop the device itself, without waiting for the
+        # in-flight (still-blocked) write to return.
+        assert output.stopped
         output.release.set()
         await speak_task
 
@@ -710,6 +715,38 @@ def test_barge_in_can_interrupt_during_a_blocking_write() -> None:
     # the second chunk is never fetched or written.
     assert synth.yielded == 1
     assert len(output.written) == 1
+
+
+class SliceOutput(FakeOutput):
+    """Records slice lengths; used to prove long chunks play in bounded slices."""
+
+    def write(self, samples: np.ndarray) -> None:
+        self.written.append(samples.copy())
+
+
+def test_long_chunk_is_written_in_bounded_slices() -> None:
+    # A whole WAV answer arrives as one long chunk; barge-in must stop within a
+    # bounded fraction of a second, so the chunk must be sliced, not written whole.
+    long_chunk = np.zeros(SAMPLE_RATE * 3, dtype=np.int16)  # 3 s at 24 kHz
+    synth = FakeSynthesizer([long_chunk], sample_rate=SAMPLE_RATE)
+    output = SliceOutput(sample_rate=SAMPLE_RATE)
+    player = SpeechPlayer(synth, output)
+
+    async def scenario() -> None:
+        speak_task = asyncio.create_task(player.speak("Ein langer Satz"))
+        # Let the first couple of slices play, then barge in.
+        while len(output.written) < 2:
+            await asyncio.sleep(0)
+        player.interrupt()
+        await asyncio.wait_for(speak_task, timeout=1.0)
+
+    run(scenario())
+
+    expected_slice = round(SAMPLE_RATE * PLAY_SLICE_SECONDS)
+    assert all(len(part) <= expected_slice for part in output.written)
+    # Stopped well before the whole 3 s chunk was written.
+    assert sum(len(part) for part in output.written) < long_chunk.size
+    assert output.stopped
 
 
 class StallingSynthesizer:

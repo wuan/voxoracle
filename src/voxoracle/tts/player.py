@@ -12,14 +12,23 @@ rate before writing, so a 24 kHz stream plays at the right speed and pitch on a
 
 Barge-in: :meth:`SpeechPlayer.interrupt` is the stop hook. WP6 wires it to the
 wake-word detector (and/or speech detection) so that hearing the activation word
-during playback cuts the answer short. :meth:`interrupt` sets an event that
-:meth:`speak` races against the next chunk, so playback stops promptly and the
-in-flight provider request is cancelled even if the provider goes quiet. Call
-:meth:`interrupt` from the event-loop thread (the session loop does).
+during playback cuts the answer short. ``interrupt`` sets a flag and an event
+and stops the output at once; ``speak`` races the next chunk fetch against the
+event (so a quiet provider does not delay cancellation) and writes audio in
+short slices checked against the flag (so a long chunk - e.g. a whole WAV answer
+- stops within a bounded fraction of a second rather than after the chunk plays
+out). Call ``interrupt`` from the event-loop thread (the session loop does).
 
 The device write blocks until PortAudio has played the samples, so it runs in a
 worker thread (``asyncio.to_thread``) to keep the event loop free; otherwise the
-barge-in detector could not run while a chunk plays.
+barge-in detector could not run while a chunk plays. Slicing keeps each blocking
+write short, so the flag is re-checked promptly.
+
+Note: ``SoundDeviceOutput.stop`` calls ``Pa_StopStream``, which drains buffered
+audio rather than discarding it, so barge-in stops within the current slice but
+may still play out a short tail of already-buffered audio. An abort
+(``Pa_AbortStream``) path on the output protocol would discard it; that is a
+device-layer change confirmed on real hardware (WP7), not a WP5 concern.
 """
 
 from __future__ import annotations
@@ -28,9 +37,16 @@ import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
 
+import numpy as np
+from numpy.typing import NDArray
+
 from voxoracle.audio.protocols import AudioOutput
 from voxoracle.audio.resample import resample
 from voxoracle.tts.protocol import SpeechChunk, Synthesizer
+
+#: Longest audio slice handed to a single blocking device write. Bounds how long
+#: barge-in can wait for an in-flight write to return, independent of chunk size.
+PLAY_SLICE_SECONDS = 0.1
 
 
 class SpeechPlayer:
@@ -40,6 +56,7 @@ class SpeechPlayer:
         self._synthesizer = synthesizer
         self._output = output
         self._interrupted = False
+        self._speaking = False
         self._stop: asyncio.Event | None = None
 
     @property
@@ -51,25 +68,30 @@ class SpeechPlayer:
         """Request barge-in: stop playback now and cancel the provider request.
 
         Sets the flag and, if a :meth:`speak` is in progress, the stop event it
-        races against, so the pending chunk fetch is abandoned without waiting for
-        the provider or the read timeout. Safe to call when nothing is playing;
-        the flag is reset at the start of the next :meth:`speak`.
+        races against, and stops the output device immediately so audio that is
+        already playing (including a blocking device write) ceases at once.
+        Safe to call when nothing is playing; the flag is reset at the start of
+        the next :meth:`speak`.
         """
         self._interrupted = True
         if self._stop is not None:
             self._stop.set()
+        if self._speaking:
+            self._output.stop()
 
     async def speak(self, text: str, *, voice: str | None = None) -> None:
         """Synthesize ``text`` and play it, stopping promptly if interrupted.
 
-        Each chunk is resampled to the output's source rate and written in a
-        worker thread (the device write blocks for the chunk's playback
-        duration). While waiting for the next chunk the player also waits on the
-        interrupt event, so barge-in stops playback and closes the provider
-        stream at once, cancelling the in-flight synthesis request. Returns once
-        playback finishes or is stopped.
+        Each chunk is resampled to the output's source rate and written in short
+        slices in a worker thread (the device write blocks for the slice's
+        playback duration), checking the interrupt flag between slices. While
+        waiting for the next chunk the player also waits on the interrupt event,
+        so barge-in stops playback and closes the provider stream at once,
+        cancelling the in-flight synthesis request. Returns once playback
+        finishes or is stopped.
         """
         self._interrupted = False
+        self._speaking = True
         self._stop = asyncio.Event()
         target_rate = self._output.sample_rate
         try:
@@ -79,12 +101,20 @@ class SpeechPlayer:
                     if chunk is None:
                         break
                     samples = resample(chunk.samples, chunk.sample_rate, target_rate)
-                    await asyncio.to_thread(self._output.write, samples)
-            if self._interrupted:
-                self._output.stop()
+                    await self._play(samples, target_rate)
         finally:
+            self._speaking = False
             # Always drop the stop event so interrupt() cannot touch a stale one.
             self._stop = None
+
+    async def _play(self, samples: NDArray[np.int16], sample_rate: int) -> None:
+        """Write ``samples`` in bounded slices, stopping on barge-in."""
+        slice_samples = max(1, round(sample_rate * PLAY_SLICE_SECONDS))
+        for start in range(0, samples.size, slice_samples):
+            if self._interrupted:
+                self._output.stop()
+                return
+            await asyncio.to_thread(self._output.write, samples[start : start + slice_samples])
 
     async def _next_chunk(self, stream: AsyncGenerator[SpeechChunk]) -> SpeechChunk | None:
         """Return the next chunk, or ``None`` at end of stream or on interrupt.

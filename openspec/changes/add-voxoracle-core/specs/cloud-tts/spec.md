@@ -75,8 +75,8 @@ backend requests a streaming response and consumes the provider's
 
 The playback layer MUST expose a stop hook that stops audio output promptly and
 cancels the in-flight provider request when the session requests a barge-in,
-without waiting for the provider to deliver another chunk or for the read
-timeout to elapse.
+without waiting for the provider to deliver another chunk, for the read timeout
+to elapse, or for the currently playing audio chunk to finish.
 
 #### Scenario: Playback is interrupted
 - **WHEN** the session requests barge-in during playback
@@ -85,6 +85,10 @@ timeout to elapse.
 #### Scenario: A stalled provider does not delay barge-in
 - **WHEN** barge-in is requested while the provider is quiet
 - **THEN** playback stops and the in-flight request is cancelled promptly, without waiting for the read timeout
+
+#### Scenario: A long chunk does not delay barge-in
+- **WHEN** barge-in is requested while a long audio chunk (such as a whole WAV answer) is playing
+- **THEN** the output stops within a bounded fraction of a second, not after the chunk finishes
 
 #### Scenario: Interrupt hook is available to the session
 - **WHEN** the wake-word detector fires during playback
