@@ -6,6 +6,7 @@ import asyncio
 import base64
 import io
 import json
+import threading
 import wave
 from collections.abc import AsyncIterator
 
@@ -588,6 +589,71 @@ def test_playback_with_matching_rate_is_unchanged() -> None:
     run(player.speak("Hallo"))
 
     assert output.written[0] is source  # resample is a no-op at equal rates
+
+
+class BlockingOutput(FakeOutput):
+    """A write that blocks like PortAudio until released, signalling progress."""
+
+    def __init__(self, sample_rate: int = SAMPLE_RATE) -> None:
+        super().__init__(sample_rate)
+        self.write_started = threading.Event()
+        self.release = threading.Event()
+
+    def write(self, samples: np.ndarray) -> None:
+        self.write_started.set()
+        # Block the (worker) thread until the test releases it, emulating a
+        # device write that lasts for the chunk's playback duration.
+        assert self.release.wait(timeout=5.0)
+        self.written.append(samples)
+
+
+def test_blocking_write_does_not_stall_the_event_loop() -> None:
+    # The device write blocks for the chunk's playback duration; it must run off
+    # the event loop so a barge-in detector (WP6) can run meanwhile.
+    synth = FakeSynthesizer([np.zeros(10, dtype=np.int16)])
+    output = BlockingOutput()
+    player = SpeechPlayer(synth, output)
+    loop_ran_during_write = False
+
+    async def scenario() -> None:
+        nonlocal loop_ran_during_write
+        speak_task = asyncio.create_task(player.speak("Hallo"))
+        # Wait until the (off-loop) write has started, then prove the event loop
+        # is still able to run this coroutine while the write blocks.
+        while not output.write_started.is_set():
+            await asyncio.sleep(0)
+        loop_ran_during_write = True
+        output.release.set()
+        await speak_task
+
+    run(scenario())
+
+    assert loop_ran_during_write
+    assert len(output.written) == 1
+
+
+def test_barge_in_can_interrupt_during_a_blocking_write() -> None:
+    synth = FakeSynthesizer([np.zeros(10, dtype=np.int16) for _ in range(2)])
+    output = BlockingOutput()
+    player = SpeechPlayer(synth, output)
+
+    async def scenario() -> None:
+        speak_task = asyncio.create_task(player.speak("Ein langer Satz"))
+        while not output.write_started.is_set():
+            await asyncio.sleep(0)
+        # The loop is responsive during the blocking write, so barge-in lands now.
+        player.interrupt()
+        output.release.set()
+        await speak_task
+
+    run(scenario())
+
+    assert player.interrupted
+    assert output.stopped
+    # The first chunk was played; barge-in landed during its blocking write, so
+    # the second chunk is abandoned before it is written.
+    assert synth.yielded == 2
+    assert len(output.written) == 1
 
 
 def test_barge_in_cancels_mid_stream() -> None:

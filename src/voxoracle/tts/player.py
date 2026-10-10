@@ -15,10 +15,15 @@ wake-word detector (and/or speech detection) so that hearing the activation word
 during playback cuts the answer short. The player checks the interrupt between
 chunks, stops the output device and abandons the provider stream, which cancels
 the in-flight synthesis request.
+
+The device write blocks until PortAudio has played the samples, so it runs in a
+worker thread (``asyncio.to_thread``) to keep the event loop free; otherwise the
+barge-in detector could not run while a chunk plays.
 """
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import aclosing
 
 from voxoracle.audio.protocols import AudioOutput
@@ -52,9 +57,10 @@ class SpeechPlayer:
 
         Each chunk is resampled to the output's source rate before it is written,
         so the provider's rate never has to match the device. Chunks are written
-        as they arrive. An :meth:`interrupt` between chunks stops the device and
-        closes the provider stream, so no further audio is fetched. Returns once
-        playback finishes or is stopped.
+        as they arrive, each in a worker thread because the device write blocks
+        for the chunk's playback duration. An :meth:`interrupt` between chunks
+        stops the device and closes the provider stream, so no further audio is
+        fetched. Returns once playback finishes or is stopped.
         """
         self._interrupted = False
         target_rate = self._output.sample_rate
@@ -63,6 +69,6 @@ class SpeechPlayer:
                 if self._interrupted:
                     break
                 samples = resample(chunk.samples, chunk.sample_rate, target_rate)
-                self._output.write(samples)
+                await asyncio.to_thread(self._output.write, samples)
         if self._interrupted:
             self._output.stop()
