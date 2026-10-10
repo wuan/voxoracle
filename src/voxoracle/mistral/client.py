@@ -73,6 +73,7 @@ class MistralAudioClient:
             base_url=base_url,
             timeout=httpx.Timeout(timeout),
             headers={"Authorization": f"Bearer {api_key}"},
+            follow_redirects=False,
             transport=transport,
         )
 
@@ -157,6 +158,12 @@ class MistralAudioClient:
                     last_error = MistralStatusError(status, response.text)
                 elif status >= 400:
                     raise MistralStatusError(status, response.text)
+                elif status >= 300:
+                    # e.g. a 3xx redirect we do not follow; surface it clearly
+                    # rather than failing later on a non-JSON body.
+                    raise MistralStatusError(
+                        status, f"unexpected non-success status (redirect?): {response.text}"
+                    )
                 else:
                     try:
                         return response.json()

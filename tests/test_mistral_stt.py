@@ -172,6 +172,21 @@ def test_bad_request_fails_immediately() -> None:
     assert calls == 1
 
 
+def test_redirect_status_is_a_clear_status_error() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(302, headers={"Location": "https://elsewhere"}, text="Found")
+
+    with pytest.raises(MistralStatusError) as excinfo:
+        transcribe(handler, retries=2)
+    assert excinfo.value.status_code == 302
+    assert "redirect" in str(excinfo.value)
+    assert calls == 1  # not retried
+
+
 def test_timeout_raises_after_retries() -> None:
     calls = 0
 
