@@ -20,7 +20,7 @@ from voxoracle import diagnostics
 from voxoracle.config import Settings, load_settings
 from voxoracle.docoracle.client import DocOracleClient, DocOracleError
 from voxoracle.docoracle.models import AskRequest
-from voxoracle.session.build import SessionComponents, build_session
+from voxoracle.session.build import build_session
 
 app = typer.Typer(
     name="voxoracle",
@@ -58,36 +58,32 @@ def _configure_logging(level: str) -> None:
 async def _serve(settings: Settings) -> None:
     """Build the device components and run the voice session until stopped.
 
-    ``SIGINT``/``SIGTERM`` are wired to a cooperative stop *before* any device is
-    opened (rather than relying on the default handler that raises
-    ``KeyboardInterrupt`` and cancels the main task mid-await). The handler
-    forwards to the session's :meth:`~VoiceSession.request_stop`, so a Ctrl-C
-    both during the synchronous build and during the run ends the loop at the
-    next step or frame boundary; the run then unwinds before
-    :meth:`SessionComponents.aclose` closes the device streams and HTTP clients.
+    The cooperative ``SIGINT``/``SIGTERM`` handlers are installed only after the
+    synchronous :func:`build_session` returns: while the event loop is blocked in
+    the build, ``add_signal_handler`` callbacks cannot run, so arming them
+    earlier would make Ctrl-C inert. During the build the default behavior
+    applies - ``KeyboardInterrupt`` propagates and ``build_session`` closes any
+    stream it already opened on ``BaseException``. Once the components exist, the
+    handler forwards to :meth:`~VoiceSession.request_stop`, so a signal ends the
+    loop at the next step or frame boundary and :meth:`SessionComponents.aclose`
+    closes the device streams and HTTP clients. A second signal forces the loop
+    out immediately.
     """
+    components = build_session(settings)
     loop = asyncio.get_running_loop()
-    components: SessionComponents | None = None
     signals_seen = 0
-    stop_requested = False
 
     def on_signal() -> None:
         # First signal: cooperative stop, so the session unwinds cleanly. A
         # repeat signal means the shutdown is taking too long, so force the loop
-        # to exit at once (a second Ctrl-C must not be the only way out).
-        nonlocal signals_seen, stop_requested
+        # out at once (a second Ctrl-C must not be the only way out).
+        nonlocal signals_seen
         signals_seen += 1
         if signals_seen > 1:
             _LOGGER.warning("second signal received; forcing shutdown")
             raise KeyboardInterrupt
-        stop_requested = True
-        if components is not None:
-            components.session.request_stop()
+        components.session.request_stop()
 
-    # The session is the only thing that observes a stop request: replacing the
-    # default SIGINT handler means nothing else raises. A signal that arrives
-    # during the synchronous build is recorded here and forwarded once the
-    # components exist, so it is not lost.
     installed: list[signal.Signals] = []
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
@@ -97,9 +93,6 @@ async def _serve(settings: Settings) -> None:
         installed.append(sig)
 
     try:
-        components = build_session(settings)
-        if stop_requested:
-            components.session.request_stop()
         try:
             await components.session.run()
         finally:

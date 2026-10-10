@@ -110,6 +110,19 @@ def test_serve_closes_components_when_the_session_raises(monkeypatch) -> None:
     assert components.aclosed
 
 
+def test_serve_lets_keyboard_interrupt_escape_during_build(monkeypatch) -> None:
+    # Handlers are installed only after the build: a Ctrl-C (KeyboardInterrupt)
+    # during the synchronous build must propagate as the default would, and
+    # build_session is responsible for closing the streams it opened.
+    def boom(settings: object) -> object:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(cli, "build_session", boom)
+
+    with pytest.raises(KeyboardInterrupt):
+        asyncio.run(cli._serve(Settings()))
+
+
 def test_serve_forwards_sigint_to_the_running_session(monkeypatch) -> None:
     # Regression: the handler must reach the session while it is running, so
     # Ctrl-C stops the loop rather than being observed by nothing (the default

@@ -131,7 +131,9 @@ def build_session(settings: Settings) -> SessionComponents:
     except BaseException:
         # ``BaseException`` (not Exception) so a KeyboardInterrupt during the
         # build still closes the already-opened devices. ``audio_output`` may be
-        # None if opening the output itself failed.
+        # None if opening the output itself failed. (A MistralAudioClient built
+        # before a later failure only holds idle sockets; the process is
+        # aborting, so it is left to the interpreter rather than awaited here.)
         if audio_output is not None:
             audio_output.close()
         audio_input.close()
