@@ -102,6 +102,31 @@ models in real time, so only the configured model is loaded to keep the
 always-on path light. Verified on the target: the ONNX backend loads and the
 `hey_jarvis` fixture is detected offline; ~3 s of ambient audio scored 0.0.
 
+### Cloud STT/TTS provider: Mistral (WP4/WP5)
+
+The user selected **Mistral** for both cloud speech-to-text and cloud
+text-to-speech. STT uses the Voxtral offline transcription endpoint
+(`POST https://api.mistral.ai/v1/audio/transcriptions`, model
+`voxtral-mini-latest`, i.e. Voxtral Mini Transcribe 2), uploading the recorded
+utterance as a 16-bit mono WAV multipart form with a `language` field
+(default `de`). The response is OpenAI-compatible (`{"text": "..."}`).
+
+Both STT and TTS share a single authenticated client
+(`voxoracle.mistral.MistralAudioClient`) that owns the base URL, bearer
+authentication, timeout, bounded exponential-backoff retries (capped, with
+jitter, honoring a numeric `Retry-After` on 429/503), and a typed-error
+surface (authentication, rate-limit, server, malformed, timeout, connection).
+The backends implement their own protocols on top of it, so a different
+provider later means a new backend, not a new transport stack.
+
+Credentials resolve as `mistral.api_key` (config / `.env` /
+`VXORACLE_MISTRAL__API_KEY`) then `MISTRAL_API_KEY`, then `LLM_API_KEY` — the
+key DocOracle already authenticates against `api.mistral.ai` with — so a single
+Mistral key can cover DocOracle and VoxOracle STT/TTS. The non-prefixed names are
+read from a real environment variable or from `.env` (env wins). No key is
+committed; CI injects a fake transport and never needs a real key. Key scope is
+confirmed on the target during WP7.
+
 ### OpenSpec as the behaviour contract
 
 Each capability has a spec with testable scenarios. Work packages start as (or
@@ -122,8 +147,8 @@ the wrong mental model in place, so it is rewritten around the appliance.
   (aarch64)**, where openWakeWord's ONNX backend installs cleanly; verified on the
   Pi 3 during WP0.
 - **Cloud STT/TTS vendors are unsettled** — a wrong early choice is costly.
-  Mitigation: keep providers behind protocols and defer the vendor decision to
-  the WP4/WP5 design documents.
+  Resolved: **Mistral** (Voxtral) for both, per the user's decision; providers
+  stay behind protocols so they remain swappable.
 - **Cloud round-trips add latency and require network + API keys** — Mitigation:
   design for spoken "thinking" feedback and explicit timeouts in the session
   state machine.
@@ -145,8 +170,10 @@ README; no data or public interface exists yet.
 
 ## Open Questions
 
-- Which cloud STT provider (WP4) and cloud TTS provider (WP5)? Deferred to their
-  design documents.
+- Which cloud STT provider (WP4) and cloud TTS provider (WP5)? Resolved: Mistral
+  (Voxtral) for both, per the user's decision. Exposed/pending in WP7: confirm
+  the Mistral API key scope covers Voxtral transcription and TTS (the user
+  intends one key for DocOracle and VoxOracle).
 - Which wake-word model on the target Pi? Resolved to openWakeWord's ONNX
   backend on 64-bit Raspberry Pi OS (aarch64). No pretrained "Franz" model
   exists, so WP3 ships a configurable model path defaulting to the `hey_jarvis`

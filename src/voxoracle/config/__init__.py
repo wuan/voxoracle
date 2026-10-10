@@ -8,6 +8,7 @@ environment wins over the file.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any, cast
 
@@ -46,17 +47,27 @@ class WakeWordSettings(BaseModel):
     threshold: float = Field(default=0.5, ge=0.0, le=1.0)
 
 
+class MistralSettings(BaseModel):
+    """Shared Mistral cloud credentials/endpoint (STT in WP4, TTS in WP5)."""
+
+    base_url: str = "https://api.mistral.ai/v1"
+    # Prefer the environment (VXORACLE_MISTRAL__API_KEY, MISTRAL_API_KEY or
+    # LLM_API_KEY); never commit a key to config.yaml.
+    api_key: str | None = None
+    timeout: float = Field(default=30.0, gt=0.0)
+    retries: int = Field(default=2, ge=0)
+
+
 class STTSettings(BaseModel):
-    provider: str | None = None
+    provider: str = "mistral"
+    model: str = "voxtral-mini-latest"
     language: str = "de"
-    timeout: float = 30.0
 
 
 class TTSSettings(BaseModel):
-    provider: str | None = None
+    provider: str = "mistral"
     language: str = "de"
     voice: str | None = None
-    timeout: float = 30.0
 
 
 class SessionSettings(BaseModel):
@@ -79,6 +90,7 @@ class Settings(BaseSettings):
     docoracle: DocOracleSettings = Field(default_factory=DocOracleSettings)
     audio: AudioSettings = Field(default_factory=AudioSettings)
     wakeword: WakeWordSettings = Field(default_factory=WakeWordSettings)
+    mistral: MistralSettings = Field(default_factory=MistralSettings)
     stt: STTSettings = Field(default_factory=STTSettings)
     tts: TTSSettings = Field(default_factory=TTSSettings)
     session: SessionSettings = Field(default_factory=SessionSettings)
@@ -135,3 +147,33 @@ def load_settings(path: str | Path | None = None) -> Settings:
             )
 
     return _Settings()
+
+
+def _dotenv_value(name: str) -> str | None:
+    """Read ``name`` from the ``.env`` file in the current directory, if present."""
+    from dotenv import dotenv_values  # python-dotenv ships with pydantic-settings
+
+    value = dotenv_values(".env").get(name)
+    return value or None
+
+
+def resolve_mistral_api_key(settings: Settings) -> str | None:
+    """Return the Mistral API key, preferring config/env over the shared env vars.
+
+    Resolution order: ``mistral.api_key`` (config, ``.env`` or
+    ``VXORACLE_MISTRAL__API_KEY``), then ``MISTRAL_API_KEY``, then
+    ``LLM_API_KEY`` (the key DocOracle already uses, so one Mistral key can cover
+    STT/TTS and DocOracle). For the last two, a real environment variable wins
+    over a ``.env`` entry, mirroring the ``VXORACLE_*`` precedence. Returns
+    ``None`` when no key is configured.
+    """
+    for candidate in (
+        settings.mistral.api_key,
+        os.environ.get("MISTRAL_API_KEY"),
+        _dotenv_value("MISTRAL_API_KEY"),
+        os.environ.get("LLM_API_KEY"),
+        _dotenv_value("LLM_API_KEY"),
+    ):
+        if candidate:
+            return candidate
+    return None
