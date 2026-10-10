@@ -43,10 +43,9 @@ DEFAULT_MODEL = "voxtral-mini-tts-2603"
 DEFAULT_LANGUAGE = "de"
 DEFAULT_SAMPLE_RATE = 24000
 
-#: Mistral SSE event types: audio deltas carry the payload; ``speech.audio.done``
-#: terminates the stream. Unknown types are ignored.
+#: Mistral SSE event type for audio deltas. ``speech.audio.done`` terminates the
+#: stream and any other (future) event type is ignored.
 SPEECH_AUDIO_DELTA = "speech.audio.delta"
-SPEECH_AUDIO_DONE = "speech.audio.done"
 
 #: Response formats this backend can decode into PCM. Mistral also offers mp3,
 #: flac and opus, which need codecs VoxOracle does not carry.
@@ -236,11 +235,15 @@ class MistralSpeechSynthesizer:
                 raise MistralResponseError(f"expected an SSE JSON object, got {decoded!r}")
             data = cast("dict[str, Any]", decoded)
             event_type = data.get("type") or event_name
-            if event_type == SPEECH_AUDIO_DONE:
-                continue
             audio = data.get("audio_data")
+            # Only deltas carry audio. A named event other than a delta (done or
+            # an unknown future kind) is skipped entirely, even if it happens to
+            # carry an audio_data field; a typeless payload with audio is treated
+            # as a delta for leniency.
+            if event_type is not None and event_type != SPEECH_AUDIO_DELTA:
+                continue
             if audio is None and event_type != SPEECH_AUDIO_DELTA:
-                continue  # unknown event kind: ignore for forward compatibility
+                continue  # no type and no audio: nothing to play
             if not isinstance(audio, str):
                 raise MistralResponseError(f"expected an SSE 'audio_data' string, got {data!r}")
             payloads.append(audio)

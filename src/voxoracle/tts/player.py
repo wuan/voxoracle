@@ -84,13 +84,13 @@ class SpeechPlayer:
     def _abort_output(self) -> None:
         """Abort the output, discarding buffered audio.
 
-        Idempotent: a repeat call (a second :meth:`interrupt`, or the slice
-        boundary in :meth:`_play` after :meth:`interrupt` already aborted) is a
-        no-op, so we never abort an already-stopped stream - ``Pa_AbortStream``
-        on a stopped stream may raise on some hosts. Prefers the protocol's
-        :meth:`~voxoracle.audio.protocols.AudioOutput.abort` (``Pa_AbortStream``:
-        discards the buffer) and falls back to ``stop`` for simpler sinks that
-        only drain. Records that the output must be restarted before it plays.
+        Idempotent: a repeat call (a second :meth:`interrupt` while :meth:`speak`
+        winds down) is a no-op, so we never abort an already-stopped stream -
+        ``Pa_AbortStream`` on a stopped stream may raise on some hosts. Prefers
+        the protocol's :meth:`~voxoracle.audio.protocols.AudioOutput.abort`
+        (``Pa_AbortStream``: discards the buffer) and falls back to ``stop`` for
+        simpler sinks that only drain. Records that the output must be restarted
+        before it plays again.
         """
         if self._output_aborted:
             return
@@ -121,7 +121,12 @@ class SpeechPlayer:
         cancelling the in-flight synthesis request. A previous barge-in left the
         output aborted, so it is restarted first so this utterance plays.
         Returns once playback finishes or is stopped.
+
+        Not re-entrant: a single :class:`SpeechPlayer` plays one utterance at a
+        time, so the session loop must await each call.
         """
+        if self._speaking:
+            raise RuntimeError("SpeechPlayer.speak() is not re-entrant")
         self._interrupted = False
         self._speaking = True
         self._stop = asyncio.Event()
@@ -145,13 +150,13 @@ class SpeechPlayer:
 
         A slice write may fail because we aborted the stream (``interrupt``);
         such a failure is swallowed once the interrupt is set, since the output
-        was deliberately aborted. Any other write failure propagates.
+        was deliberately aborted. Any other write failure propagates. The output
+        is aborted by :meth:`interrupt` itself, so this loop only stops early.
         """
         slice_samples = max(1, round(sample_rate * PLAY_SLICE_SECONDS))
         for start in range(0, samples.size, slice_samples):
             if self._interrupted:
-                self._abort_output()
-                return
+                return  # interrupt() already aborted the output
             try:
                 await asyncio.to_thread(self._output.write, samples[start : start + slice_samples])
             except Exception:

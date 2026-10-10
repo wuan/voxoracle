@@ -392,14 +392,17 @@ def test_sse_delta_without_audio_data_is_malformed() -> None:
 
 
 def test_unknown_sse_event_type_is_skipped() -> None:
-    # A new event kind must not break the stream (forward compatibility).
+    # A new event kind must not break the stream (forward compatibility), and
+    # its audio_data (if any) must be ignored.
     delta = base64.b64encode(pcm_bytes([0.0])).decode()
+    bogus = base64.b64encode(pcm_bytes([1.0])).decode()
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
             200,
             content=sse(
                 {"type": "speech.something.new", "detail": "ignored"},
+                {"type": "speech.something.new", "audio_data": bogus},
                 {"type": "speech.audio.delta", "audio_data": delta},
                 {"type": "speech.audio.done", "usage": {}},
             ),
@@ -408,6 +411,7 @@ def test_unknown_sse_event_type_is_skipped() -> None:
 
     chunks = synthesize(handler)
     assert len(chunks) == 1
+    assert list(chunks[0].samples) == [0]  # only the real delta played
 
 
 # --- error paths --------------------------------------------------------------
@@ -1003,6 +1007,24 @@ def test_speak_does_not_restart_output_without_prior_abort() -> None:
     assert output.started == 0  # nothing to resume
 
 
+def test_speak_is_not_reentrant() -> None:
+    synth = FakeSynthesizer([np.zeros(10, dtype=np.int16) for _ in range(2)])
+    output = BlockingOutput()
+    player = SpeechPlayer(synth, output)
+
+    async def scenario() -> None:
+        first = asyncio.create_task(player.speak("Erste Frage"))
+        while not output.write_started.is_set():
+            await asyncio.sleep(0)
+        with pytest.raises(RuntimeError, match="re-entrant"):
+            await player.speak("Zweite Frage")
+        player.interrupt()
+        output.release.set()
+        await asyncio.wait_for(first, timeout=1.0)
+
+    run(scenario())
+
+
 class DoubleAbortOutput(FakeOutput):
     """An abort() that raises if called twice, as a stopped stream might."""
 
@@ -1032,11 +1054,11 @@ def test_repeat_interrupt_does_not_reabort_the_output() -> None:
     assert output.aborted
 
 
-def test_slice_boundary_abort_is_not_a_reabort() -> None:
-    # _play re-checks the interrupt at each slice boundary and aborts there; if
-    # interrupt() already aborted, that second abort must be a no-op too. Here
-    # the in-flight write succeeds (a host where a stopped stream still accepts
-    # a write), so the loop reaches the boundary abort.
+def test_play_does_not_reabort_after_interrupt() -> None:
+    # interrupt() aborts the output; _play's slice loop must only stop, never
+    # abort a second time. Here the in-flight write succeeds (a host where a
+    # stopped stream still accepts a write), so the loop reaches the next slice
+    # boundary with the output already aborted.
     class BlockingThenOkOutput(DoubleAbortOutput):
         def __init__(self, sample_rate: int = SAMPLE_RATE) -> None:
             super().__init__(sample_rate)
@@ -1061,7 +1083,7 @@ def test_slice_boundary_abort_is_not_a_reabort() -> None:
         output.release.set()
         await asyncio.wait_for(speak_task, timeout=2.0)
 
-    run(scenario())  # must not raise from the slice-boundary abort
+    run(scenario())  # must not raise from a second abort
 
     assert output.aborted
     assert len(output.written) == 1  # stopped after the first slice
