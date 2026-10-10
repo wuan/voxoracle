@@ -250,6 +250,45 @@ def test_empty_stream_is_malformed() -> None:
         synthesize(handler)
 
 
+class CloseTrackingStream(httpx.AsyncByteStream):
+    """Yields frames forever and records when it is closed."""
+
+    def __init__(self) -> None:
+        self.closed = False
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        delta = base64.b64encode(pcm_bytes([0.0])).decode()
+        frame = sse({"type": "speech.audio.delta", "audio_data": delta})
+        while True:
+            yield frame
+
+    async def aclose(self) -> None:
+        self.closed = True
+
+
+def test_abandoning_the_stream_closes_the_response() -> None:
+    # Barge-in abandons the async generator; the underlying response must close
+    # deterministically (aclosing in stream_post_json -> the response finally).
+    stream = CloseTrackingStream()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, stream=stream, headers={"content-type": "text/event-stream"})
+
+    async def scenario() -> None:
+        client = MistralAudioClient("test-key", transport=httpx.MockTransport(handler))
+        synth = MistralSpeechSynthesizer(client)
+        try:
+            consumption = synth.synthesize("Hallo")
+            await anext(consumption)  # read one chunk, then abandon
+            await consumption.aclose()
+        finally:
+            await client.aclose()
+
+    run(scenario())
+
+    assert stream.closed
+
+
 def test_stream_without_audio_events_is_malformed() -> None:
     # A body with only a done event (or comments) yields no audio: on a voice
     # appliance that is silence, so it must fail rather than pass.

@@ -18,7 +18,8 @@ from __future__ import annotations
 
 import asyncio
 import random
-from collections.abc import AsyncIterator, Mapping
+from collections.abc import AsyncGenerator, AsyncIterator, Mapping
+from contextlib import aclosing
 from dataclasses import dataclass
 from typing import Any
 
@@ -113,10 +114,13 @@ class MistralAudioClient:
         as :meth:`post_json`; once the response starts streaming, its body is
         yielded as-is. A mid-stream timeout or transport failure is surfaced as
         the same typed error as the buffered path but is not retried, since a
-        partly-consumed streaming response cannot be safely retried.
+        partly-consumed streaming response cannot be safely retried. Closing this
+        generator (e.g. when the caller abandons it on barge-in) closes the
+        underlying response.
         """
-        async for chunk in self._stream_request(path, json=dict(json)):
-            yield chunk
+        async with aclosing(self._stream_request(path, json=dict(json))) as stream:
+            async for chunk in stream:
+                yield chunk
 
     def _classify(self, response: httpx.Response) -> _ResponseFailure | None:
         """Classify a fully-buffered response into the shared retry/error policy.
@@ -227,7 +231,7 @@ class MistralAudioClient:
         assert last_error is not None
         raise last_error
 
-    async def _stream_request(self, path: str, *, json: dict[str, Any]) -> AsyncIterator[bytes]:
+    async def _stream_request(self, path: str, *, json: dict[str, Any]) -> AsyncGenerator[bytes]:
         """Establish a streamed POST, retrying only the establishment step."""
         last_error: MistralError | None = None
         for attempt in range(self._retries + 1):
