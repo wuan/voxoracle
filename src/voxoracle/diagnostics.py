@@ -149,11 +149,10 @@ def expected_model_path(settings: Settings) -> Path:
 def check_wakeword(settings: Settings) -> CheckResult:
     """Resolve the configured wake-word model and report its presence.
 
-    Uses :func:`voxoracle.wakeword.resolve_model_path`, which falls back to the
-    bundled placeholder model when a bare name has no ``.onnx`` yet. An explicit
-    path that is missing fails hard (``resolve_model_path`` raises).
+    Uses :func:`voxoracle.wakeword.resolve_model_path`. A trained model is
+    REQUIRED: a missing model fails (there is no placeholder fallback).
     """
-    from voxoracle.wakeword import PLACEHOLDER_MODEL, resolve_model_path
+    from voxoracle.wakeword import resolve_model_path
     from voxoracle.wakeword.errors import WakeWordError
 
     models_dir = resolve_models_dir(settings)
@@ -166,18 +165,10 @@ def check_wakeword(settings: Settings) -> CheckResult:
             name="wake word",
             severity=Severity.FAIL,
             detail=f"model {configured!r} could not be resolved: {exc}",
-            hints=[f"provide {expected} or run `voxoracle setup`"],
-        )
-    if PLACEHOLDER_MODEL in path.name:
-        return CheckResult(
-            name="wake word",
-            severity=Severity.WARN,
-            detail=(
-                f"configured {configured!r} not found in {models_dir}; "
-                f"using placeholder {PLACEHOLDER_MODEL!r} (detects the placeholder "
-                "phrase, not 'Hey Franz')"
-            ),
-            hints=[f"drop a trained model at {expected}"],
+            hints=[
+                f"provide the trained model at {expected}",
+                "train it off-device with livekit-wakeword (see training/hey-franz.yaml)",
+            ],
         )
     return CheckResult(
         name="wake word",

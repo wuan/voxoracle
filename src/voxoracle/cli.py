@@ -165,9 +165,9 @@ def _render(result: diagnostics.CheckResult) -> None:
 def _safe(name: str, check: Callable[[], diagnostics.CheckResult]) -> diagnostics.CheckResult:
     """Run a check, turning any unexpected error into a FAIL result.
 
-    A broken dependency (e.g. an unimportable openWakeWord) must be reported by
-    ``doctor`` as a failed check, not escape as a traceback that would skip the
-    remaining checks.
+    A broken dependency (e.g. an unimportable livekit-wakeword) must be reported
+    by ``doctor`` as a failed check, not escape as a traceback that would skip
+    the remaining checks.
     """
     try:
         return check()
@@ -249,7 +249,7 @@ def setup() -> None:
 
     # Report the wake-word status with the same logic `doctor` uses, so setup
     # and doctor agree for both bare names and explicit .onnx paths. Guarded the
-    # same way as doctor: a broken openWakeWord install must render a [fail]
+    # same way as doctor: a broken livekit-wakeword install must render a [fail]
     # line, not crash setup with a traceback.
     model = _safe("wake word", lambda: diagnostics.check_wakeword(settings))
     typer.echo(f"  {_SEVERITY_MARK[model.severity]} wake word: {model.detail}")
@@ -259,5 +259,6 @@ def setup() -> None:
     typer.echo("Next steps:")
     typer.echo("  1. copy config.example.yaml to config.yaml and set docoracle.url")
     typer.echo("  2. provide a Mistral key (MISTRAL_API_KEY or LLM_API_KEY)")
-    typer.echo(f"  3. ensure a trained wake-word model at {model_path}")
+    typer.echo(f"  3. install the trained wake-word model at {model_path}")
+    typer.echo("     (train it off-device with livekit-wakeword; see training/hey-franz.yaml)")
     typer.echo("  4. run `voxoracle doctor` to verify")

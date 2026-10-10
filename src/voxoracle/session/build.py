@@ -1,10 +1,10 @@
 """Build a ready-to-run :class:`VoiceSession` from :class:`Settings`.
 
 This is the one place that turns configuration into concrete, device-backed
-collaborators (PortAudio capture/playback, the openWakeWord model, the Mistral
-client and the DocOracle client). Hardware and provider imports are deferred to
-this module so the rest of ``voxoracle.session`` stays importable without
-PortAudio, openWakeWord or a network.
+collaborators (PortAudio capture/playback, the livekit-wakeword model, the
+Mistral client and the DocOracle client). Hardware and provider imports are
+deferred to this module so the rest of ``voxoracle.session`` stays importable
+without PortAudio, livekit-wakeword or a network.
 """
 
 from __future__ import annotations
@@ -91,8 +91,8 @@ def build_session(settings: Settings) -> SessionComponents:
     from voxoracle.tts.mistral import MistralSpeechSynthesizer
     from voxoracle.tts.player import SpeechPlayer
     from voxoracle.wakeword.detector import (
-        OpenWakeWordDetector,
-        OpenWakeWordScorer,
+        LiveKitWakeWordScorer,
+        WindowedWakeWordDetector,
         resolve_model_path,
     )
 
@@ -105,11 +105,12 @@ def build_session(settings: Settings) -> SessionComponents:
     try:
         audio_output = backend.open_configured_output(settings.tts.sample_rate)
         model_path = resolve_model_path(settings.wakeword.model, resolve_models_dir(settings))
-        scorer = OpenWakeWordScorer(model_path)
-        detector = OpenWakeWordDetector(
+        scorer = LiveKitWakeWordScorer(model_path)
+        detector = WindowedWakeWordDetector(
             scorer,
             model_name=scorer.model_name,
             threshold=settings.wakeword.threshold,
+            stride_frames=settings.wakeword.stride_frames,
         )
 
         mistral_client = MistralAudioClient(

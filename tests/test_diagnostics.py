@@ -109,15 +109,13 @@ def test_check_audio_configured_device_resolved(tmp_path, monkeypatch):
 # --- wake word --------------------------------------------------------------
 
 
-def test_check_wakeword_falls_back_to_placeholder(tmp_path, monkeypatch):
+def test_check_wakeword_missing_model_fails(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     settings = diagnostics.default_settings()
     result = diagnostics.check_wakeword(settings)
-    # No hey-franz.onnx present and openWakeWord may not be importable: either the
-    # placeholder warns, or the model is unresolvable (fail) with a setup hint.
-    assert result.severity in (Severity.WARN, Severity.FAIL)
-    if result.severity is Severity.WARN:
-        assert "placeholder" in result.detail
+    # No placeholder fallback: the trained model is required, so doctor fails.
+    assert result.severity is Severity.FAIL
+    assert any("hey-franz" in hint for hint in result.hints)
 
 
 def test_check_wakeword_finds_configured_model(tmp_path, monkeypatch):

@@ -87,7 +87,8 @@ def test_wakeword_defaults(tmp_path, monkeypatch) -> None:
     settings = load_settings()
     assert settings.wakeword.model == "hey-franz"
     assert settings.wakeword.models_dir == "models"
-    assert settings.wakeword.threshold == 0.5
+    assert settings.wakeword.threshold == 0.68
+    assert settings.wakeword.stride_frames == 4
 
 
 def test_invalid_wakeword_threshold_is_rejected(tmp_path) -> None:

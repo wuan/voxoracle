@@ -32,7 +32,7 @@ You (speech) ─▶ Wake word "Hey Franz" (local) ─▶ Speech-to-Text (cloud) 
 You (hearing) ◀─ Text-to-Speech (cloud) ◀─ Answer + citations ◀─────────────────────────────────────┘
 ```
 
-1. Capture — openWakeWord detects the wake word "Hey Franz" locally (no cloud
+1. Capture — livekit-wakeword detects the wake word "Hey Franz" locally (no cloud
    round-trip), and the appliance records the question from its microphone.
 2. Ask — the transcribed question is sent to a running DocOracle server via its
    HTTP API (`POST /ask`).
@@ -49,8 +49,8 @@ which guarantees the two projects can evolve independently.
 ## Features
 
 - **Hands-free activation** — the wake word "Hey Franz", detected locally using
-  [openWakeWord](https://github.com/dscripka/openWakeWord); no buttons, no
-  screen, no browser.
+  [livekit-wakeword](https://github.com/livekit/livekit-wakeword) with a
+  purpose-trained German model; no buttons, no screen, no browser.
 - **Grounded answers** — every spoken answer carries DocOracle's citations
   (`module:pages:page#section`); the sources can be read back on request.
 - **Filtering by voice** — restrict questions to a module, component, or
@@ -78,11 +78,13 @@ which guarantees the two projects can evolve independently.
 
 ### Notes for the Pi 3
 
-- Run a **64-bit (aarch64) Debian-based Raspberry Pi OS**. The wake word uses
-  openWakeWord's ONNX backend, and `onnxruntime` publishes no 32-bit `armv7`
-  wheels; the Pi 3's Cortex-A53 supports 64-bit.
+- Run a **64-bit (aarch64) Debian-based Raspberry Pi OS**. The wake word runs
+  on `onnxruntime`, which publishes no 32-bit `armv7` wheels; the Pi 3's
+  Cortex-A53 supports 64-bit.
 - Keep the always-on local path (the wake word) lightweight; STT and TTS are
-  offloaded to the cloud.
+  offloaded to the cloud. The detector scores a rolling ~2 s window every
+  `wakeword.stride_frames` frames — the stride trades detection latency for
+  CPU and is tuned on the Pi 3.
 - Verify audio and detection behavior on real hardware before relying on a
   backend.
 
@@ -114,6 +116,31 @@ uv sync
 # Prepare the appliance (wake-word models, device checks)
 uv run voxoracle setup
 ```
+
+### Wake-word model (`hey-franz.onnx`)
+
+The trained model is **required** and is **not committed** to the repository —
+`voxoracle doctor` and session startup fail fast until it is installed:
+
+```bash
+cp hey-franz.onnx models/   # or set wakeword.model to an explicit .onnx path
+```
+
+Train it off-device on a fast machine (the `train`/`voxcpm` extras pull PyTorch
+and are not installed on the Pi):
+
+```bash
+uv tool install "livekit-wakeword[train,eval,export,voxcpm]"
+livekit-wakeword setup --config training/hey-franz.yaml   # models + data
+livekit-wakeword run    training/hey-franz.yaml           # full pipeline
+```
+
+`training/hey-franz.yaml` holds the German training configuration ("hey franz",
+VoxCPM TTS, conv-attention classifier). Before deploying, the eval must meet
+the acceptance gate: **at most 0.5 false positives per hour** on German
+background audio; record recall and the eval's optimal threshold and set
+`wakeword.threshold` accordingly (the config default 0.68 matches upstream
+conv-attention models).
 
 ## Usage
 
@@ -232,9 +259,9 @@ audio:
   frame_ms: 30                 # Audio frame size in milliseconds
 
 wakeword:
-  engine: openwakeword
-  model: hey-franz
-  threshold: 0.5               # Detection threshold in [0, 1]
+  model: hey-franz            # <models_dir>/hey-franz.onnx (required, see above)
+  threshold: 0.68             # Detection threshold in [0, 1] (from model eval)
+  stride_frames: 4            # Score the window every N capture frames
 
 mistral:
   base_url: https://api.mistral.ai/v1   # Shared by STT and TTS
@@ -278,7 +305,7 @@ DocOracle.
 ```
 src/voxoracle/
 ├── audio/        # device enumeration, capture, playback, resampling, VAD
-├── wakeword/     # wake-word detector (openWakeWord, "Hey Franz") + models
+├── wakeword/     # wake-word detector (livekit-wakeword, "Hey Franz") + models
 ├── stt/          # cloud speech-to-text backends + protocol
 ├── tts/          # cloud text-to-speech backends + protocol
 ├── docoracle/    # typed HTTP client for /ask, /health, /info
@@ -328,5 +355,7 @@ MIT. See [LICENSE](LICENSE).
 - [DocOracle](https://github.com/wuan/docoracle) by
   [wuan](https://github.com/wuan) — the RAG engine this project gives a voice
   to.
-- [openWakeWord](https://github.com/dscripka/openWakeWord) — local wake-word
-  detection.
+- [livekit-wakeword](https://github.com/livekit/livekit-wakeword) — local
+  wake-word detection and the training pipeline behind `hey-franz.onnx`
+  (built on the same Google speech embeddings as
+  [openWakeWord](https://github.com/dscripka/openWakeWord)).

@@ -39,13 +39,19 @@ class AudioSettings(BaseModel):
 
 
 class WakeWordSettings(BaseModel):
-    engine: str = "openwakeword"
-    # Custom model name ("hey-franz") or an explicit .onnx path. The bundled
-    # default is the clearly-labelled placeholder hey_jarvis, used until a
-    # purpose-trained hey-franz model is provided (see design.md).
+    # Trained "Hey Franz" model: name ("hey-franz" -> <models_dir>/hey-franz.onnx)
+    # or an explicit .onnx path. REQUIRED - doctor and session startup fail fast
+    # without it (no placeholder); train it with training/hey-franz.yaml.
     model: str = "hey-franz"
     models_dir: str = "models"
-    threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+    # Detection threshold in [0, 1]. Conv-attention models score well above the
+    # old openWakeWord defaults; the interim default matches upstream's optimal
+    # operating point (~0.68) and is finalized from the trained model's eval.
+    threshold: float = Field(default=0.68, ge=0.0, le=1.0)
+    # Score the rolling ~2 s window every N capture frames (30 ms each).
+    # Stateless inference recomputes the whole window per call; this stride
+    # trades detection latency for CPU and is tuned on the Pi 3 (design D2).
+    stride_frames: int = Field(default=4, ge=1)
 
 
 class MistralSettings(BaseModel):
