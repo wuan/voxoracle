@@ -1,3 +1,11 @@
+[![Quality gate status](https://sonarcloud.io/api/project_badges/measure?project=wuan_voxoracle&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=wuan_voxoracle)
+[![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=wuan_voxoracle&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=wuan_voxoracle)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=wuan_voxoracle&metric=coverage)](https://sonarcloud.io/summary/new_code?id=wuan_voxoracle)
+[![Duplicated Lines (%)](https://sonarcloud.io/api/project_badges/measure?project=wuan_voxoracle&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=wuan_voxoracle)
+[![Maintainability issues](https://sonarcloud.io/api/project_badges/measure?project=wuan_voxoracle&metric=software_quality_maintainability_issues)](https://sonarcloud.io/summary/new_code?id=wuan_voxoracle)
+[![Reliability issues](https://sonarcloud.io/api/project_badges/measure?project=wuan_voxoracle&metric=software_quality_reliability_issues)](https://sonarcloud.io/summary/new_code?id=wuan_voxoracle)
+[![Security issues](https://sonarcloud.io/api/project_badges/measure?project=wuan_voxoracle&metric=software_quality_security_issues)](https://sonarcloud.io/summary/new_code?id=wuan_voxoracle)
+
 # VoxOracle
 
 The voice frontend for [DocOracle](https://github.com/wuan/docoracle) — ask your
