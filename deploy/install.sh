@@ -73,24 +73,32 @@ fi
 
 # --- 5. systemd unit --------------------------------------------------------
 log "Installing systemd unit ($SERVICE_NAME.service)"
-UNIT_DIR="$HOME/.config/systemd/user"
 if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-  UNIT_DIR="/etc/systemd/system"
   SCOPE="system"
+  UNIT_DIR="/etc/systemd/system"
+  SUDO="sudo"
 else
   SCOPE="user"
+  UNIT_DIR="$HOME/.config/systemd/user"
+  SUDO=""
 fi
-mkdir -p "$UNIT_DIR"
+
+# Render the unit with the invoking user's paths, then install it.
+rendered="$(mktemp)"
+trap 'rm -f "$rendered"' EXIT
 sed -e "s|__USER__|$(id -un)|g" \
     -e "s|__GROUP__|$(id -gn)|g" \
     -e "s|__HOME__|$HOME|g" \
     -e "s|__INSTALL_DIR__|$INSTALL_DIR|g" \
-    deploy/systemd/voxoracle.service > "$UNIT_DIR/$SERVICE_NAME.service"
+    deploy/systemd/voxoracle.service > "$rendered"
 
 if [ "$SCOPE" = "system" ]; then
-  sudo systemctl daemon-reload
-  sudo systemctl enable --now "$SERVICE_NAME"
+  $SUDO install -m 0644 "$rendered" "$UNIT_DIR/$SERVICE_NAME.service"
+  $SUDO systemctl daemon-reload
+  $SUDO systemctl enable --now "$SERVICE_NAME"
 else
+  mkdir -p "$UNIT_DIR"
+  install -m 0644 "$rendered" "$UNIT_DIR/$SERVICE_NAME.service"
   systemctl --user daemon-reload
   systemctl --user enable --now "$SERVICE_NAME"
 fi
