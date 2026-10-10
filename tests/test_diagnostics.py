@@ -132,6 +132,19 @@ def test_check_wakeword_finds_configured_model(tmp_path, monkeypatch):
     assert "franz.onnx" in result.detail
 
 
+def test_check_wakeword_explicit_path_hint_has_no_double_suffix(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    missing = tmp_path / "custom.onnx"
+    (tmp_path / "config.yaml").write_text(
+        f"wakeword:\n  model: {missing}\n", encoding="utf-8"
+    )
+    settings = diagnostics.load_settings("config.yaml")
+    result = diagnostics.check_wakeword(settings)
+    assert result.severity is Severity.FAIL
+    assert "custom.onnx.onnx" not in " ".join(result.hints)
+    assert any("custom.onnx" in hint for hint in result.hints)
+
+
 def test_resolve_models_dir_is_absolute(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     settings = diagnostics.default_settings()
@@ -224,6 +237,27 @@ def test_mistral_api_key_source_labels(tmp_path, monkeypatch):
     assert mistral_api_key_source(diagnostics.default_settings()) is None
     monkeypatch.setenv("LLM_API_KEY", "k")
     assert mistral_api_key_source(diagnostics.default_settings()) == "LLM_API_KEY (env)"
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.setenv("MISTRAL_API_KEY", "k")
+    assert mistral_api_key_source(diagnostics.default_settings()) == "MISTRAL_API_KEY (env)"
+
+
+def test_mistral_api_key_source_distinguishes_vxoracle_env(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.setenv("VXORACLE_MISTRAL__API_KEY", "k")
+    label = mistral_api_key_source(diagnostics.default_settings())
+    assert label == "VXORACLE_MISTRAL__API_KEY (env)"
+
+
+def test_mistral_api_key_source_config_yaml(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    for name in ("VXORACLE_MISTRAL__API_KEY", "MISTRAL_API_KEY", "LLM_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    (tmp_path / "config.yaml").write_text("mistral:\n  api_key: from-config\n", encoding="utf-8")
+    label = mistral_api_key_source(diagnostics.load_settings("config.yaml"))
+    assert label == "config.yaml"
 
 
 # --- exit code / setup ------------------------------------------------------

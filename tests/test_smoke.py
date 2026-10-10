@@ -82,7 +82,7 @@ def test_cli_setup_is_idempotent(tmp_path, monkeypatch) -> None:
 def test_cli_doctor_exits_nonzero_without_docoracle(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     # No DocOracle reachable and no key configured -> hard-fail exit code.
-    monkeypatch.setattr("voxoracle.cli._audio_backend", lambda: None)
+    monkeypatch.setattr("voxoracle.cli._audio_backend", lambda settings: None)
     for name in ("VXORACLE_MISTRAL__API_KEY", "MISTRAL_API_KEY", "LLM_API_KEY"):
         monkeypatch.delenv(name, raising=False)
     result = runner.invoke(app, ["doctor"])

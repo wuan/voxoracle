@@ -15,7 +15,7 @@ from typing import Annotated
 import typer
 
 from voxoracle import diagnostics
-from voxoracle.config import load_settings
+from voxoracle.config import Settings, load_settings
 from voxoracle.docoracle.client import DocOracleClient, DocOracleError
 from voxoracle.docoracle.models import AskRequest
 
@@ -76,11 +76,11 @@ def _render(result: diagnostics.CheckResult) -> None:
         typer.echo(f"         -> {hint}")
 
 
-def _audio_backend() -> diagnostics.AudioBackend:
+def _audio_backend(settings: Settings) -> diagnostics.AudioBackend:
     """Build the real PortAudio backend, imported lazily so CI stays hardware-free."""
     from voxoracle.audio.sounddevice_backend import SoundDeviceBackend
 
-    return SoundDeviceBackend(load_settings().audio)
+    return SoundDeviceBackend(settings.audio)
 
 
 @app.command()
@@ -96,7 +96,7 @@ def doctor() -> None:
     results.append(diagnostics.check_settings(settings))
 
     try:
-        audio_report = diagnostics.enumerate_audio(settings, _audio_backend())
+        audio_report = diagnostics.enumerate_audio(settings, _audio_backend(settings))
     except Exception as exc:  # noqa: BLE001 - importing sounddevice may fail without PortAudio
         audio_report = diagnostics.AudioDeviceReport(error=f"{type(exc).__name__}: {exc}")
     results.extend(diagnostics.check_audio(settings, audio_report))

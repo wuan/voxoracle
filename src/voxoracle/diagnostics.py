@@ -144,6 +144,10 @@ def check_wakeword(settings: Settings) -> CheckResult:
 
     models_dir = resolve_models_dir(settings)
     configured = settings.wakeword.model
+    # An explicit .onnx path is used as-is; a bare name resolves under models_dir
+    # and is where a trained model should be dropped.
+    explicit = Path(configured).suffix == ".onnx" or Path(configured).is_absolute()
+    expected = Path(configured) if explicit else models_dir / f"{configured}.onnx"
     try:
         path = resolve_model_path(configured, models_dir)
     except WakeWordError as exc:
@@ -151,7 +155,7 @@ def check_wakeword(settings: Settings) -> CheckResult:
             name="wake word",
             severity=Severity.FAIL,
             detail=f"model {configured!r} could not be resolved: {exc}",
-            hints=[f"provide {models_dir / (configured + '.onnx')} or run `voxoracle setup`"],
+            hints=[f"provide {expected} or run `voxoracle setup`"],
         )
     if PLACEHOLDER_MODEL in path.name:
         return CheckResult(
@@ -162,7 +166,7 @@ def check_wakeword(settings: Settings) -> CheckResult:
                 f"using placeholder {PLACEHOLDER_MODEL!r} (detects the placeholder "
                 "phrase, not 'Franz')"
             ),
-            hints=[f"drop a trained {configured}.onnx into {models_dir}"],
+            hints=[f"drop a trained model at {expected}"],
         )
     return CheckResult(
         name="wake word",

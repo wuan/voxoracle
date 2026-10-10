@@ -173,10 +173,11 @@ def resolve_mistral_api_key(settings: Settings) -> str | None:
 def mistral_api_key_source(settings: Settings) -> str | None:
     """Return a short human-readable label for where the Mistral key came from.
 
-    Never returns the key itself. Labels: ``"config.yaml"``, ``".env
-    (MISTRAL_API_KEY)"``, ``".env (LLM_API_KEY)"`` or the environment-variable
-    names (``"MISTRAL_API_KEY (env)"`` / ``"LLM_API_KEY (env)"``). Returns
-    ``None`` when no key is configured.
+    Never returns the key itself. Labels: ``"VXORACLE_MISTRAL__API_KEY (env)"``,
+    ``"VXORACLE_MISTRAL__API_KEY (.env)"``, ``"config.yaml"``, the environment
+    variables (``"MISTRAL_API_KEY (env)"`` / ``"LLM_API_KEY (env)"``) or their
+    ``.env`` entries (``".env (MISTRAL_API_KEY)"`` / ``".env (LLM_API_KEY)"``).
+    Returns ``None`` when no key is configured.
     """
     return _resolve_mistral_api_key(settings)[1]
 
@@ -184,6 +185,12 @@ def mistral_api_key_source(settings: Settings) -> str | None:
 def _resolve_mistral_api_key(settings: Settings) -> tuple[str | None, str | None]:
     """Resolve the Mistral key and its source label without exposing the key."""
     if settings.mistral.api_key:
+        # ``mistral.api_key`` is fed by config.yaml or VXORACLE_MISTRAL__API_KEY
+        # (env or .env); pydantic merges them, so attribute the env var when set.
+        if os.environ.get("VXORACLE_MISTRAL__API_KEY"):
+            return settings.mistral.api_key, "VXORACLE_MISTRAL__API_KEY (env)"
+        if _dotenv_value("VXORACLE_MISTRAL__API_KEY"):
+            return settings.mistral.api_key, "VXORACLE_MISTRAL__API_KEY (.env)"
         return settings.mistral.api_key, "config.yaml"
     for name, label in (
         ("MISTRAL_API_KEY", "MISTRAL_API_KEY (env)"),
