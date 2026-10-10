@@ -108,7 +108,9 @@ def build_session(settings: Settings) -> SessionComponents:
             voice=settings.tts.voice,
             sample_rate=settings.tts.sample_rate,
         )
-    except Exception:
+    except BaseException:
+        # ``BaseException`` (not Exception) so a KeyboardInterrupt during the
+        # build still closes the already-opened capture device.
         audio_input.close()
         raise
     player = SpeechPlayer(synthesizer, audio_output)

@@ -20,7 +20,7 @@ from voxoracle import diagnostics
 from voxoracle.config import Settings, load_settings
 from voxoracle.docoracle.client import DocOracleClient, DocOracleError
 from voxoracle.docoracle.models import AskRequest
-from voxoracle.session.build import SessionComponents, build_session
+from voxoracle.session.build import build_session
 
 app = typer.Typer(
     name="voxoracle",
@@ -55,35 +55,46 @@ def _configure_logging(level: str) -> None:
     )
 
 
-async def _serve(components: SessionComponents) -> None:
-    """Run the voice session until stopped, then shut the components down.
+async def _serve(settings: Settings) -> None:
+    """Build the device components and run the voice session until stopped.
 
-    ``SIGINT``/``SIGTERM`` are wired to a cooperative stop (rather than relying
-    on the default handler that cancels the main task at its current await and
-    would cut playback mid-sentence): the session is asked to stop, it unwinds at
-    the next step or frame boundary, and :meth:`SessionComponents.aclose` closes
-    the device streams and HTTP clients.
+    ``SIGINT``/``SIGTERM`` are wired to a cooperative stop *before* any device is
+    opened (rather than relying on the default handler that raises
+    ``KeyboardInterrupt`` and cancels the main task mid-await). This closes the
+    window where a Ctrl-C during component build would escape as a bare
+    traceback: with the handler installed, Ctrl-C only sets the session's stop
+    flag, and the run unwinds at the next step or frame boundary before
+    :meth:`SessionComponents.aclose` closes the device streams and HTTP clients.
     """
     loop = asyncio.get_running_loop()
+    stopped = asyncio.Event()
     installed: list[signal.Signals] = []
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
-            loop.add_signal_handler(sig, components.session.request_stop)
+            loop.add_signal_handler(sig, stopped.set)
         except NotImplementedError:  # pragma: no cover - not on this platform
             continue
         installed.append(sig)
+
     try:
-        await components.session.run()
+        components = build_session(settings)
+        # A signal during the (synchronous) build set the flag but could not
+        # reach the session yet; forward it so the run returns at once and still
+        # closes the just-opened devices.
+        if stopped.is_set():
+            components.session.request_stop()
+        try:
+            await components.session.run()
+        finally:
+            await components.aclose()
     finally:
         for sig in installed:
             loop.remove_signal_handler(sig)
-        await components.aclose()
 
 
 def _run_session(settings: Settings) -> None:
-    """Build the device components and run the session loop under Ctrl-C."""
-    components = build_session(settings)
-    asyncio.run(_serve(components))
+    """Run the voice session loop under a cooperatively-handled Ctrl-C."""
+    asyncio.run(_serve(settings))
 
 
 @app.command()
