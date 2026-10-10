@@ -482,8 +482,9 @@ class FakeOutput(AudioOutput):
 class FakeSynthesizer:
     """Yields controllable chunks and records how far the consumer got."""
 
-    def __init__(self, chunks: list[np.ndarray]) -> None:
+    def __init__(self, chunks: list[np.ndarray], *, sample_rate: int = SAMPLE_RATE) -> None:
         self._chunks = chunks
+        self._sample_rate = sample_rate
         self.yielded = 0
         self.closed = False
         self.on_yield = None
@@ -494,7 +495,7 @@ class FakeSynthesizer:
                 self.yielded += 1
                 if self.on_yield is not None:
                     self.on_yield(self.yielded)
-                yield SpeechChunk(samples=samples, sample_rate=SAMPLE_RATE)
+                yield SpeechChunk(samples=samples, sample_rate=self._sample_rate)
         finally:
             self.closed = True
 
@@ -513,6 +514,34 @@ def test_playback_writes_each_chunk() -> None:
     assert synth.yielded == 2
     assert not output.stopped
     assert not player.interrupted
+
+
+def test_playback_resamples_mismatched_chunk_rate() -> None:
+    # A 24 kHz provider stream played through a 16 kHz output must be resampled,
+    # not written straight through (which would play ~1.5x too fast).
+    source = np.arange(2400, dtype=np.int16)  # 0.1 s at 24 kHz
+    synth = FakeSynthesizer([source], sample_rate=24000)
+    output = FakeOutput(sample_rate=16000)
+    player = SpeechPlayer(synth, output)
+
+    run(player.speak("Hallo"))
+
+    assert len(output.written) == 1
+    written = output.written[0]
+    assert written.dtype == np.int16
+    assert written.size == 1600  # 0.1 s at the output's 16 kHz
+    assert not player.interrupted
+
+
+def test_playback_with_matching_rate_is_unchanged() -> None:
+    source = np.arange(500, dtype=np.int16)
+    synth = FakeSynthesizer([source], sample_rate=SAMPLE_RATE)
+    output = FakeOutput(sample_rate=SAMPLE_RATE)
+    player = SpeechPlayer(synth, output)
+
+    run(player.speak("Hallo"))
+
+    assert output.written[0] is source  # resample is a no-op at equal rates
 
 
 def test_barge_in_cancels_mid_stream() -> None:
