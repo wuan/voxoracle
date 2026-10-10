@@ -39,7 +39,14 @@ if [ -n "$SOURCE" ]; then
   log "Installing from local checkout $SOURCE"
   if [ "$(readlink -f "$SOURCE")" != "$(readlink -f "$INSTALL_DIR" 2>/dev/null || echo)" ]; then
     mkdir -p "$INSTALL_DIR"
-    rsync -a --delete --exclude '.venv' --exclude '.git' "$SOURCE"/ "$INSTALL_DIR"/
+    # --delete keeps the install dir a mirror of the source, but the locally
+    # owned, git-ignored state must survive a re-run: config.yaml and .env hold
+    # the operator's settings and API key, and models/ holds the trained
+    # wake-word .onnx. Never sync or delete those.
+    rsync -a --delete \
+      --exclude '.venv' --exclude '.git' \
+      --exclude 'config.yaml' --exclude '.env' --exclude 'models' \
+      "$SOURCE"/ "$INSTALL_DIR"/
   fi
 elif [ -d "$INSTALL_DIR/.git" ]; then
   log "Updating existing checkout in $INSTALL_DIR"
