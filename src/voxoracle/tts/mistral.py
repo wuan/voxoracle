@@ -43,6 +43,11 @@ DEFAULT_MODEL = "voxtral-mini-tts-2603"
 DEFAULT_LANGUAGE = "de"
 DEFAULT_SAMPLE_RATE = 24000
 
+#: Mistral SSE event types: audio deltas carry the payload; ``speech.audio.done``
+#: terminates the stream. Unknown types are ignored.
+SPEECH_AUDIO_DELTA = "speech.audio.delta"
+SPEECH_AUDIO_DONE = "speech.audio.done"
+
 #: Response formats this backend can decode into PCM. Mistral also offers mp3,
 #: flac and opus, which need codecs VoxOracle does not carry.
 DECODABLE_FORMATS = ("pcm", "wav")
@@ -204,11 +209,12 @@ class MistralSpeechSynthesizer:
     def _event_audio_data(self, event: bytes) -> list[str]:
         """Return the base64 audio payloads of one SSE event block.
 
-        A ``speech.audio.done`` event carries no audio and is skipped (detected
-        either from the ``event:`` name or the JSON ``type`` field, since Mistral
-        may express it either way). Each ``data:`` line is parsed as a complete
-        JSON payload; multi-line ``data:`` fields are not joined, which matches
-        Mistral's one-JSON-per-event stream.
+        Only ``speech.audio.delta`` events carry audio; ``speech.audio.done`` and
+        any other (unknown) event type are skipped, so a new event kind does not
+        break the stream. The type may come from the ``event:`` name or the JSON
+        ``type`` field, since Mistral may express it either way. Each ``data:``
+        line is parsed as a complete JSON payload; multi-line ``data:`` fields
+        are not joined, which matches Mistral's one-JSON-per-event stream.
         """
         payloads: list[str] = []
         event_name: str | None = None
@@ -229,9 +235,12 @@ class MistralSpeechSynthesizer:
             if not isinstance(decoded, dict):
                 raise MistralResponseError(f"expected an SSE JSON object, got {decoded!r}")
             data = cast("dict[str, Any]", decoded)
-            if event_name == "speech.audio.done" or data.get("type") == "speech.audio.done":
+            event_type = data.get("type") or event_name
+            if event_type == SPEECH_AUDIO_DONE:
                 continue
             audio = data.get("audio_data")
+            if audio is None and event_type != SPEECH_AUDIO_DELTA:
+                continue  # unknown event kind: ignore for forward compatibility
             if not isinstance(audio, str):
                 raise MistralResponseError(f"expected an SSE 'audio_data' string, got {data!r}")
             payloads.append(audio)

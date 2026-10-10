@@ -87,7 +87,14 @@ def synthesize(handler, *, retries=0, **kwargs) -> list[SpeechChunk]:
 
 def test_synthesizer_protocol_is_structural() -> None:
     client = MistralAudioClient("k")
-    assert isinstance(MistralSpeechSynthesizer(client), Synthesizer)
+
+    async def scenario() -> bool:
+        try:
+            return isinstance(MistralSpeechSynthesizer(client), Synthesizer)
+        finally:
+            await client.aclose()
+
+    assert run(scenario())
 
 
 def test_speech_chunk_validates() -> None:
@@ -382,6 +389,25 @@ def test_sse_delta_without_audio_data_is_malformed() -> None:
 
     with pytest.raises(MistralResponseError):
         synthesize(handler)
+
+
+def test_unknown_sse_event_type_is_skipped() -> None:
+    # A new event kind must not break the stream (forward compatibility).
+    delta = base64.b64encode(pcm_bytes([0.0])).decode()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            content=sse(
+                {"type": "speech.something.new", "detail": "ignored"},
+                {"type": "speech.audio.delta", "audio_data": delta},
+                {"type": "speech.audio.done", "usage": {}},
+            ),
+            headers={"content-type": "text/event-stream"},
+        )
+
+    chunks = synthesize(handler)
+    assert len(chunks) == 1
 
 
 # --- error paths --------------------------------------------------------------

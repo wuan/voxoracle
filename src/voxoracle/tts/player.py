@@ -19,11 +19,12 @@ short slices checked against the flag (so a long chunk - e.g. a whole WAV answer
 - stops within a bounded fraction of a second rather than after the chunk plays
 out). Call ``interrupt`` from the event-loop thread (the session loop does).
 
-The device write blocks until PortAudio has played the samples, so it runs in a
-worker thread (``asyncio.to_thread``) to keep the event loop free; otherwise the
-barge-in detector could not run while a chunk plays. Slicing keeps each blocking
-write short, so the flag is re-checked promptly, and barge-in aborts the output
-(``Pa_AbortStream``) so already-buffered audio is discarded rather than drained.
+The device write blocks until PortAudio has consumed the samples into its
+buffer, so it runs in a worker thread (``asyncio.to_thread``) to keep the event
+loop free; otherwise the barge-in detector could not run while a chunk is being
+queued. Slicing keeps each blocking write short, so the flag is re-checked
+promptly, and barge-in aborts the output (``Pa_AbortStream``) so
+already-buffered audio is discarded rather than drained.
 """
 
 from __future__ import annotations
