@@ -2,14 +2,15 @@
 
 The CLI is intentionally thin: it exposes the operator surface while the actual
 voice-session behaviour lives in the ``session``/``audio``/``stt``/``tts``/
-``wakeword``/``docoracle`` packages. ``ask`` (WP1), ``doctor`` and ``setup``
-(WP7) are implemented; ``run`` is a placeholder until WP6 lands (see
-``openspec/changes/add-voxoracle-core/tasks.md``).
+``wakeword``/``docoracle`` packages. ``run`` (WP6), ``ask`` (WP1), ``doctor`` and
+``setup`` (WP7) are implemented.
 """
 
 from __future__ import annotations
 
 import asyncio
+import logging
+import signal
 from collections.abc import Callable
 from typing import Annotated
 
@@ -19,6 +20,7 @@ from voxoracle import diagnostics
 from voxoracle.config import Settings, load_settings
 from voxoracle.docoracle.client import DocOracleClient, DocOracleError
 from voxoracle.docoracle.models import AskRequest
+from voxoracle.session.build import build_session
 
 app = typer.Typer(
     name="voxoracle",
@@ -27,6 +29,8 @@ app = typer.Typer(
     add_completion=False,
 )
 
+_LOGGER = logging.getLogger("voxoracle")
+
 _SEVERITY_MARK = {
     diagnostics.Severity.OK: "[ ok ]",
     diagnostics.Severity.WARN: "[warn]",
@@ -34,15 +38,96 @@ _SEVERITY_MARK = {
 }
 
 
+def _configure_logging(level: str) -> None:
+    """Configure stdlib logging at ``level`` (default INFO), to stderr.
+
+    ``logging.level`` is an unvalidated string in the schema, so an unknown value
+    falls back to INFO with a warning rather than being silently ignored.
+    """
+    resolved = getattr(logging, level.upper(), None)
+    if not isinstance(resolved, int):
+        typer.echo(f"warning: unknown logging level {level!r}; using INFO", err=True)
+        resolved = logging.INFO
+    logging.basicConfig(
+        level=resolved,
+        format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
+
+async def _serve(settings: Settings) -> None:
+    """Build the device components and run the voice session until stopped.
+
+    The cooperative ``SIGINT``/``SIGTERM`` handlers are installed only after the
+    synchronous :func:`build_session` returns: while the event loop is blocked in
+    the build, ``add_signal_handler`` callbacks cannot run, so arming them
+    earlier would make Ctrl-C inert. During the build the default behavior
+    applies - ``KeyboardInterrupt`` propagates and ``build_session`` closes any
+    stream it already opened on ``BaseException``. Once the components exist, the
+    handler forwards to :meth:`~VoiceSession.request_stop`, so a signal ends the
+    loop at the next step or frame boundary and :meth:`SessionComponents.aclose`
+    closes the device streams and HTTP clients. A second signal forces the loop
+    out immediately.
+    """
+    components = build_session(settings)
+    loop = asyncio.get_running_loop()
+    signals_seen = 0
+
+    def on_signal() -> None:
+        # First signal: cooperative stop, so the session unwinds cleanly. A
+        # repeat signal means the shutdown is taking too long, so force the loop
+        # out at once (a second Ctrl-C must not be the only way out).
+        nonlocal signals_seen
+        signals_seen += 1
+        if signals_seen > 1:
+            _LOGGER.warning("second signal received; forcing shutdown")
+            raise KeyboardInterrupt
+        components.session.request_stop()
+
+    installed: list[signal.Signals] = []
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        try:
+            loop.add_signal_handler(sig, on_signal)
+        except NotImplementedError:  # pragma: no cover - not on this platform
+            continue
+        installed.append(sig)
+
+    try:
+        try:
+            await components.session.run()
+        finally:
+            await components.aclose()
+    finally:
+        for sig in installed:
+            loop.remove_signal_handler(sig)
+
+
+def _run_session(settings: Settings) -> None:
+    """Run the voice session loop under a cooperatively-handled Ctrl-C."""
+    asyncio.run(_serve(settings))
+
+
 @app.command()
 def run() -> None:
     """Run the always-on voice session loop."""
-    typer.echo(
-        "error: `voxoracle run` is not implemented yet (WP6); "
-        'use `voxoracle ask "…"` for text mode and `voxoracle doctor` to check the device.',
-        err=True,
-    )
-    raise typer.Exit(code=1)
+    try:
+        settings = load_settings()
+    except Exception as exc:  # noqa: BLE001 - surface any config error, like `setup`
+        typer.echo(f"error: invalid configuration: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
+    _configure_logging(settings.logging.level)
+    _LOGGER.info("starting voice session (Ctrl-C to stop)")
+
+    try:
+        _run_session(settings)
+    except KeyboardInterrupt:  # forced shutdown on a second signal
+        _LOGGER.warning("forced shutdown")
+        typer.echo("Stopped.", err=True)
+    except Exception as exc:  # noqa: BLE001 - report startup failures clearly
+        _LOGGER.error("voice session could not start: %s", exc)
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
 
 
 @app.command()

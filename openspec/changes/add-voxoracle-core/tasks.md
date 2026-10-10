@@ -53,20 +53,21 @@
 
 ## 7. WP6 — Voice session state machine
 
-- [ ] 7.1 Implement the wake → record → transcribe → ask → speak loop with injected collaborators
-- [ ] 7.2 Add error paths (no speech, STT failure, DocOracle unreachable/timeout) that speak a prompt and return to IDLE
-- [ ] 7.3 Add barge-in (wake word or speech during SPEAKING stops playback)
-- [ ] 7.4 Add the optional follow-up listening window
-- [ ] 7.5 Verify a simulated end-to-end conversation with fakes and the error paths
+- [x] 7.1 Implement the wake → record → transcribe → ask → speak loop with injected collaborators
+- [x] 7.2 Add error paths (no speech, STT failure, DocOracle unreachable/timeout) that speak a prompt and return to IDLE
+- [x] 7.3 Add barge-in (wake word during SPEAKING interrupts playback via `SpeechPlayer.interrupt`, scheduled thread-safely on the event loop, and starts a new turn)
+- [x] 7.4 Add the optional follow-up listening window (`session.follow_up` + `session.follow_up_seconds`, 0 = off)
+- [x] 7.5 Verify a simulated end-to-end conversation with fakes and the error paths
+- [x] 7.6 Replace the `voxoracle run` placeholder with the real loop (build components from settings, wire logging, graceful Ctrl-C shutdown)
 
 ## 8. WP7 — Config, packaging and Pi deployment
 
 - [x] 8.1 Implement the settings schema (Pydantic settings) and `config.yaml`/env loading matching `config.example.yaml`
 - [x] 8.2 Implement `voxoracle setup` (wake-word model bootstrap) and `voxoracle doctor` (devices, models, DocOracle status)
-- [ ] 8.3 Finish `voxoracle run` for the target device
+- [x] 8.3 Finish `voxoracle run` for the target device
 - [x] 8.4 Add a systemd unit and an install script; start on boot
 - [ ] 8.5 Verify `voxoracle run` on a Pi after install and document the hardware setup
-- [ ] 8.6 On-device (TTS): verify the real barge-in path (a write on a `Pa_AbortStream`-aborted stream restarts playback for the next utterance) and confirm Mistral's live `pcm` sample rate and SSE framing (including multi-line `data:` handling)
+- [ ] 8.6 On-device (TTS): verify the real barge-in path (a write on a `Pa_AbortStream`-aborted stream restarts playback for the next utterance) and confirm Mistral's live `pcm` sample rate and SSE framing (including multi-line `data:` handling); measure the always-on per-frame `asyncio.to_thread` cost (a dedicated reader thread may be cheaper on the Pi 3) and the barge-in frame loss (speech begun before the wake word completes)
 
 ## 9. WP8 — Quality, CI and release hardening
 

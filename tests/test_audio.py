@@ -133,6 +133,21 @@ class TestEndpointing:
         # 0.3 s at 30 ms/frame == 10 frames maximum
         assert result.size == 10 * FRAME_SAMPLES
 
+    def test_should_stop_aborts_recording(self) -> None:
+        # A caller-visible stop (Ctrl-C) must end the recording without draining
+        # the whole max-duration window.
+        frames = [tone_frame() for _ in range(100)]
+        source = FakeInput(frames)
+        polls = {"n": 0}
+
+        def should_stop() -> bool:
+            polls["n"] += 1
+            return polls["n"] >= 4
+
+        result = record_utterance(source, FakeVad(), self.settings(), should_stop=should_stop)
+        assert result is None  # aborted before a complete utterance
+        assert polls["n"] == 4  # stopped promptly, not after max_seconds
+
 
 class TestWebRtcVad:
     def test_silence_is_not_speech(self) -> None:

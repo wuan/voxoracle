@@ -80,7 +80,11 @@ class TTSSettings(BaseModel):
 
 class SessionSettings(BaseModel):
     max_record_seconds: float = 15.0
+    # Keep listening for a direct follow-up after an answer without requiring the
+    # wake word again. Off by default; ``follow_up_seconds`` (0 also disables)
+    # bounds how long the follow-up window stays open.
     follow_up: bool = False
+    follow_up_seconds: float = Field(default=10.0, ge=0.0)
     barge_in: bool = True
 
 
