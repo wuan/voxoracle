@@ -123,6 +123,30 @@ def test_serve_forwards_sigint_to_the_running_session(monkeypatch) -> None:
     assert components.aclosed
 
 
+def test_serve_second_signal_forces_shutdown(monkeypatch) -> None:
+    # A hung shutdown (the session ignores the first stop) must be escapable: a
+    # second SIGINT raises KeyboardInterrupt out of the loop, unwinding _serve
+    # (which still closes the components).
+    session = _FakeSession(wait=True)
+    components = _FakeComponents(session)
+    monkeypatch.setattr(cli, "build_session", lambda settings: components)
+
+    async def scenario() -> None:
+        task = asyncio.create_task(cli._serve(Settings()))
+        while not session.ran:
+            await asyncio.sleep(0)
+        os.kill(os.getpid(), signal.SIGINT)  # cooperative stop requested
+        await asyncio.sleep(0)
+        os.kill(os.getpid(), signal.SIGINT)  # force: raises out of the loop
+        await asyncio.wait_for(task, timeout=2.0)
+
+    # The forced KeyboardInterrupt unwinds asyncio.run itself, not just the task.
+    with pytest.raises(KeyboardInterrupt):
+        asyncio.run(scenario())
+
+    assert components.aclosed
+
+
 def _patch_build_hardware(monkeypatch, *, input_stream, output_stream) -> None:
     """Swap the device backend and wake-word resolution for fakes."""
 

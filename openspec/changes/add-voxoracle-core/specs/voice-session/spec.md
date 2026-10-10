@@ -103,7 +103,7 @@ are not starved.
 
 #### Scenario: Graceful shutdown
 - **WHEN** a stop is requested (e.g. Ctrl-C, wired to `request_stop` via a signal handler)
-- **THEN** the loop ends at the next step or frame boundary (recording is aborted promptly rather than waiting out `session.max_record_seconds`), the device streams are closed, and the HTTP clients are closed
+- **THEN** the loop ends at the next step or frame boundary (recording is aborted promptly rather than waiting out `session.max_record_seconds`, and an answer being spoken is cut short via `SpeechPlayer.interrupt`), the device streams are closed, and the HTTP clients are closed
 
 #### Scenario: Stop before the loop starts
 - **WHEN** a stop is requested before the loop is started

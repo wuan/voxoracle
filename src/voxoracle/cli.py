@@ -68,16 +68,26 @@ async def _serve(settings: Settings) -> None:
     """
     loop = asyncio.get_running_loop()
     components: SessionComponents | None = None
+    signals_seen = 0
+    stop_requested = False
 
     def on_signal() -> None:
-        # The session is the only thing that observes a stop request: replacing
-        # the default SIGINT handler means nothing raises KeyboardInterrupt. A
-        # signal that arrives during the synchronous build is delivered when the
-        # loop next runs (at the session's first await), by which point
-        # ``components`` is set, so this forwards it to the just-built session.
+        # First signal: cooperative stop, so the session unwinds cleanly. A
+        # repeat signal means the shutdown is taking too long, so force the loop
+        # to exit at once (a second Ctrl-C must not be the only way out).
+        nonlocal signals_seen, stop_requested
+        signals_seen += 1
+        if signals_seen > 1:
+            _LOGGER.warning("second signal received; forcing shutdown")
+            raise KeyboardInterrupt
+        stop_requested = True
         if components is not None:
             components.session.request_stop()
 
+    # The session is the only thing that observes a stop request: replacing the
+    # default SIGINT handler means nothing else raises. A signal that arrives
+    # during the synchronous build is recorded here and forwarded once the
+    # components exist, so it is not lost.
     installed: list[signal.Signals] = []
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
@@ -88,6 +98,8 @@ async def _serve(settings: Settings) -> None:
 
     try:
         components = build_session(settings)
+        if stop_requested:
+            components.session.request_stop()
         try:
             await components.session.run()
         finally:
@@ -116,6 +128,9 @@ def run() -> None:
 
     try:
         _run_session(settings)
+    except KeyboardInterrupt:  # forced shutdown on a second signal
+        _LOGGER.warning("forced shutdown")
+        typer.echo("Stopped.", err=True)
     except Exception as exc:  # noqa: BLE001 - report startup failures clearly
         _LOGGER.error("voice session could not start: %s", exc)
         typer.echo(f"error: {exc}", err=True)

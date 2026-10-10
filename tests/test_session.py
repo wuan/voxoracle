@@ -740,6 +740,31 @@ def test_barge_in_awaits_the_in_flight_read_before_returning() -> None:
     assert not audio.concurrent
 
 
+def test_stop_during_speaking_cuts_playback_short() -> None:
+    # A stop (Ctrl-C / systemd) while a long answer plays must interrupt playback
+    # immediately instead of waiting for the whole answer, even with barge-in
+    # disabled (no watcher running).
+    audio = FakeAudioInput(wake_then_question())
+    player = FakePlayer()
+    player.block_next_speak()  # playback blocks until interrupted
+    session, _detector, _t, _c, _p = build_session(audio, player=player, barge_in=False)
+
+    async def scenario() -> None:
+        task = asyncio.create_task(session.run())
+        while not player.spoken:
+            await asyncio.sleep(0)
+        session.request_stop()
+        # The stop must interrupt playback, so run() returns without the test
+        # ever releasing the blocked speak.
+        await asyncio.wait_for(task, timeout=2.0)
+
+    asyncio.run(scenario())
+
+    assert player.speak_calls == 1
+    assert player.interrupted  # playback was cut short
+    assert session.state is SessionState.IDLE
+
+
 def test_session_config_follow_up_enabled_flag() -> None:
     assert not SessionConfig(
         sample_rate=SAMPLE_RATE, frame_samples=FRAME_SAMPLES, follow_up=False
