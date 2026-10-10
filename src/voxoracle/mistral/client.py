@@ -96,7 +96,8 @@ class MistralAudioClient:
     def _delay_for(self, attempt: int, retry_after: float | None) -> float:
         """Delay before the next attempt: exponential backoff, capped, with jitter.
 
-        ``retry_after`` (from a 429/503 header) is honored as a lower bound.
+        ``retry_after`` (from a 429/503 header) is honored as a lower bound, but
+        is itself capped at ``max_retry_delay``.
         """
         base = self._retry_delay * self._backoff_factor**attempt
         delay = min(base, self._max_retry_delay)
