@@ -100,6 +100,27 @@ def test_cli_setup_handles_explicit_model_path(tmp_path, monkeypatch) -> None:
     assert "custom.onnx.onnx" not in result.stdout
 
 
+def test_cli_doctor_survives_broken_wakeword_dependency(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("voxoracle.cli._audio_backend", lambda settings: None)
+    for name in ("VXORACLE_MISTRAL__API_KEY", "MISTRAL_API_KEY", "LLM_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+
+    # A broken openWakeWord install raises ImportError (not WakeWordError),
+    # which must become a FAIL line instead of crashing the whole run.
+    def boom(settings: object) -> object:
+        raise ImportError("No module named 'openwakeword'")
+
+    monkeypatch.setattr("voxoracle.cli.diagnostics.check_wakeword", boom)
+    result = runner.invoke(app, ["doctor"])
+    assert result.exit_code == 1
+    assert "wake word" in result.stdout
+    assert "ImportError" in result.stdout
+    # The later checks still ran despite the broken wake-word check.
+    assert "docoracle /health" in result.stdout
+    assert "mistral key" in result.stdout
+
+
 def test_cli_doctor_exits_nonzero_without_docoracle(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     # No DocOracle reachable and no key configured -> hard-fail exit code.

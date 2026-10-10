@@ -10,6 +10,7 @@ voice-session behaviour lives in the ``session``/``audio``/``stt``/``tts``/
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from typing import Annotated
 
 import typer
@@ -76,6 +77,19 @@ def _render(result: diagnostics.CheckResult) -> None:
         typer.echo(f"         -> {hint}")
 
 
+def _safe(name: str, check: Callable[[], diagnostics.CheckResult]) -> diagnostics.CheckResult:
+    """Run a check, turning any unexpected error into a FAIL result.
+
+    A broken dependency (e.g. an unimportable openWakeWord) must be reported by
+    ``doctor`` as a failed check, not escape as a traceback that would skip the
+    remaining checks.
+    """
+    try:
+        return check()
+    except Exception as exc:  # noqa: BLE001 - a broken check becomes a FAIL result
+        return diagnostics.CheckResult(name, diagnostics.Severity.FAIL, f"{type(exc).__name__}: {exc}")
+
+
 def _audio_backend(settings: Settings) -> diagnostics.AudioBackend:
     """Build the real PortAudio backend, imported lazily so CI stays hardware-free."""
     from voxoracle.audio.sounddevice_backend import SoundDeviceBackend
@@ -101,9 +115,9 @@ def doctor() -> None:
         audio_report = diagnostics.AudioDeviceReport(error=f"{type(exc).__name__}: {exc}")
     results.extend(diagnostics.check_audio(settings, audio_report))
 
-    results.append(diagnostics.check_wakeword(settings))
+    results.append(_safe("wake word", lambda: diagnostics.check_wakeword(settings)))
     results.extend(asyncio.run(diagnostics.check_docoracle(settings)))
-    results.append(diagnostics.check_mistral_key(settings))
+    results.append(_safe("mistral key", lambda: diagnostics.check_mistral_key(settings)))
 
     for result in results:
         _render(result)
