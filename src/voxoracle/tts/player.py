@@ -56,6 +56,8 @@ class SpeechPlayer:
         self._interrupted = False
         self._speaking = False
         self._stop: asyncio.Event | None = None
+        # True once the output has been aborted, so the next speak() restarts it.
+        self._output_aborted = False
 
     @property
     def interrupted(self) -> bool:
@@ -68,8 +70,9 @@ class SpeechPlayer:
         Sets the flag and, if a :meth:`speak` is in progress, the stop event it
         races against, and aborts the output device immediately so audio that is
         already playing (including a blocking device write and any audio already
-        buffered) ceases at once. Safe to call when nothing is playing; the flag
-        is reset at the start of the next :meth:`speak`.
+        buffered) ceases at once. The next :meth:`speak` restarts the output.
+        Safe to call when nothing is playing; the flag is reset at the start of
+        the next :meth:`speak`.
         """
         self._interrupted = True
         if self._stop is not None:
@@ -82,13 +85,24 @@ class SpeechPlayer:
 
         Prefers the protocol's :meth:`~voxoracle.audio.protocols.AudioOutput.abort`
         (``Pa_AbortStream``: discards the buffer) and falls back to ``stop`` for
-        simpler sinks that only drain.
+        simpler sinks that only drain. Records that the output must be restarted
+        before it can play again.
         """
         abort = getattr(self._output, "abort", None)
         if callable(abort):
             abort()
         else:  # pragma: no cover - every real output implements abort
             self._output.stop()
+        self._output_aborted = True
+
+    def _resume_output(self) -> None:
+        """Restart the output after an abort, so the next utterance plays."""
+        if not self._output_aborted:
+            return
+        start = getattr(self._output, "start", None)
+        if callable(start):
+            start()
+        self._output_aborted = False
 
     async def speak(self, text: str, *, voice: str | None = None) -> None:
         """Synthesize ``text`` and play it, stopping promptly if interrupted.
@@ -98,12 +112,14 @@ class SpeechPlayer:
         playback duration), checking the interrupt flag between slices. While
         waiting for the next chunk the player also waits on the interrupt event,
         so barge-in stops playback and closes the provider stream at once,
-        cancelling the in-flight synthesis request. Returns once playback
-        finishes or is stopped.
+        cancelling the in-flight synthesis request. A previous barge-in left the
+        output aborted, so it is restarted first so this utterance plays.
+        Returns once playback finishes or is stopped.
         """
         self._interrupted = False
         self._speaking = True
         self._stop = asyncio.Event()
+        self._resume_output()
         target_rate = self._output.sample_rate
         try:
             async with aclosing(self._synthesizer.synthesize(text, voice=voice)) as stream:

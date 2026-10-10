@@ -95,6 +95,10 @@ discard already-buffered audio rather than drain it.
 - **WHEN** the wake-word detector fires during playback
 - **THEN** it can call the playback layer's interrupt hook to stop the answer
 
+#### Scenario: Playback recovers after a barge-in
+- **WHEN** a barge-in aborts the output and the session later plays another answer
+- **THEN** the output is restarted so the next answer plays normally
+
 ### Requirement: Testable without a provider
 
 The TTS implementation MUST be verifiable without network or audio hardware by

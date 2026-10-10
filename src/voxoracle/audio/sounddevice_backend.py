@@ -154,6 +154,16 @@ class SoundDeviceOutput:
         """The source rate accepted by :meth:`write`."""
         return self._sample_rate
 
+    def start(self) -> None:
+        """Ensure playback is running (idempotent).
+
+        After :meth:`abort`/:meth:`stop` the PortAudio stream is inactive;
+        restart it so the next utterance plays. ``sounddevice`` raises if the
+        stream is already active, so query ``active`` first.
+        """
+        if not self._stream.active:
+            self._stream.start()
+
     def write(self, samples: NDArray[np.int16]) -> None:
         prepared = resample(samples, self._sample_rate, self._device_rate)
         self._stream.write(prepared.reshape(-1, 1))

@@ -591,6 +591,7 @@ class FakeOutput(AudioOutput):
     def __init__(self, sample_rate: int = SAMPLE_RATE) -> None:
         self._sample_rate = sample_rate
         self.written: list[np.ndarray] = []
+        self.started = 0
         self.stopped = False
         self.aborted = False
         self.closed = False
@@ -598,6 +599,9 @@ class FakeOutput(AudioOutput):
     @property
     def sample_rate(self) -> int:
         return self._sample_rate
+
+    def start(self) -> None:
+        self.started += 1
 
     def write(self, samples: np.ndarray) -> None:
         self.written.append(samples)
@@ -929,6 +933,42 @@ def test_interrupted_flag_resets_between_utterances() -> None:
 
     assert not player.interrupted
     assert len(output.written) == 1
+
+
+def test_next_utterance_restarts_output_after_barge_in_abort() -> None:
+    # Pa_AbortStream stops the stream; the next speak() must restart it so the
+    # following answer actually plays (no hardware needed to verify the call).
+    synth = FakeSynthesizer([np.zeros(10, dtype=np.int16) for _ in range(2)])
+    output = BlockingOutput()
+    player = SpeechPlayer(synth, output)
+
+    async def scenario() -> None:
+        first = asyncio.create_task(player.speak("Erste Frage"))
+        while not output.write_started.is_set():
+            await asyncio.sleep(0)
+        player.interrupt()  # abort mid-write
+        output.release.set()
+        await asyncio.wait_for(first, timeout=1.0)
+
+        # The second utterance must restart the aborted output and then play.
+        before = output.started
+        await player.speak("Zweite Frage")
+        assert output.started == before + 1
+
+    run(scenario())
+
+    assert output.aborted
+    assert output.started == 1
+
+
+def test_speak_does_not_restart_output_without_prior_abort() -> None:
+    synth = FakeSynthesizer([np.zeros(4, dtype=np.int16)])
+    output = FakeOutput()
+    player = SpeechPlayer(synth, output)
+
+    run(player.speak("Hallo"))
+
+    assert output.started == 0  # nothing to resume
 
 
 # --- config resolution --------------------------------------------------------
