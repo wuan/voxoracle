@@ -39,7 +39,7 @@ def run() -> None:
     """Run the always-on voice session loop."""
     typer.echo(
         "error: `voxoracle run` is not implemented yet (WP6); "
-        "use `voxoracle ask \"…\"` for text mode and `voxoracle doctor` to check the device.",
+        'use `voxoracle ask "…"` for text mode and `voxoracle doctor` to check the device.',
         err=True,
     )
     raise typer.Exit(code=1)
@@ -87,7 +87,27 @@ def _safe(name: str, check: Callable[[], diagnostics.CheckResult]) -> diagnostic
     try:
         return check()
     except Exception as exc:  # noqa: BLE001 - a broken check becomes a FAIL result
-        return diagnostics.CheckResult(name, diagnostics.Severity.FAIL, f"{type(exc).__name__}: {exc}")
+        return diagnostics.CheckResult(
+            name, diagnostics.Severity.FAIL, f"{type(exc).__name__}: {exc}"
+        )
+
+
+def _safe_all(
+    name: str, check: Callable[[], list[diagnostics.CheckResult]]
+) -> list[diagnostics.CheckResult]:
+    """Run a multi-result check, turning any unexpected error into one FAIL result.
+
+    Same intent as :func:`_safe`, for checks that return several results (e.g.
+    the DocOracle ``/health`` + ``/info`` probe). ``check_docoracle`` only
+    guards the request phase, so an invalid ``docoracle.url`` raises inside the
+    client constructor; that must not escape and skip the remaining checks.
+    """
+    try:
+        return check()
+    except Exception as exc:  # noqa: BLE001 - a broken check becomes a FAIL result
+        return [
+            diagnostics.CheckResult(name, diagnostics.Severity.FAIL, f"{type(exc).__name__}: {exc}")
+        ]
 
 
 def _audio_backend(settings: Settings) -> diagnostics.AudioBackend:
@@ -116,7 +136,9 @@ def doctor() -> None:
     results.extend(diagnostics.check_audio(settings, audio_report))
 
     results.append(_safe("wake word", lambda: diagnostics.check_wakeword(settings)))
-    results.extend(asyncio.run(diagnostics.check_docoracle(settings)))
+    results.extend(
+        _safe_all("docoracle", lambda: asyncio.run(diagnostics.check_docoracle(settings)))
+    )
     results.append(_safe("mistral key", lambda: diagnostics.check_mistral_key(settings)))
 
     for result in results:
@@ -141,9 +163,11 @@ def setup() -> None:
         typer.echo(f"  {label}: {path} ({state})")
 
     # Report the wake-word status with the same logic `doctor` uses, so setup
-    # and doctor agree for both bare names and explicit .onnx paths.
-    model = diagnostics.check_wakeword(settings)
-    typer.echo(f"  wake word: {model.detail}")
+    # and doctor agree for both bare names and explicit .onnx paths. Guarded the
+    # same way as doctor: a broken openWakeWord install must render a [fail]
+    # line, not crash setup with a traceback.
+    model = _safe("wake word", lambda: diagnostics.check_wakeword(settings))
+    typer.echo(f"  {_SEVERITY_MARK[model.severity]} wake word: {model.detail}")
 
     model_path = diagnostics.expected_model_path(settings)
     typer.echo("")

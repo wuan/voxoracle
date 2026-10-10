@@ -84,9 +84,7 @@ def test_check_audio_default_device_ok(tmp_path, monkeypatch):
 
 def test_check_audio_configured_device_not_found(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "config.yaml").write_text(
-        "audio:\n  input_device: Missing Mic\n", encoding="utf-8"
-    )
+    (tmp_path / "config.yaml").write_text("audio:\n  input_device: Missing Mic\n", encoding="utf-8")
     settings = diagnostics.load_settings("config.yaml")
     mic = DeviceInfo(1, "CD04 USB Audio", "input", 1, 0, 32000.0, is_default=True)
     report = diagnostics.enumerate_audio(settings, FakeBackend([mic], [mic]))
@@ -135,9 +133,7 @@ def test_check_wakeword_finds_configured_model(tmp_path, monkeypatch):
 def test_check_wakeword_explicit_path_hint_has_no_double_suffix(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     missing = tmp_path / "custom.onnx"
-    (tmp_path / "config.yaml").write_text(
-        f"wakeword:\n  model: {missing}\n", encoding="utf-8"
-    )
+    (tmp_path / "config.yaml").write_text(f"wakeword:\n  model: {missing}\n", encoding="utf-8")
     settings = diagnostics.load_settings("config.yaml")
     result = diagnostics.check_wakeword(settings)
     assert result.severity is Severity.FAIL
