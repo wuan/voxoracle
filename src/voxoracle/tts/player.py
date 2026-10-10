@@ -22,13 +22,8 @@ out). Call ``interrupt`` from the event-loop thread (the session loop does).
 The device write blocks until PortAudio has played the samples, so it runs in a
 worker thread (``asyncio.to_thread``) to keep the event loop free; otherwise the
 barge-in detector could not run while a chunk plays. Slicing keeps each blocking
-write short, so the flag is re-checked promptly.
-
-Note: ``SoundDeviceOutput.stop`` calls ``Pa_StopStream``, which drains buffered
-audio rather than discarding it, so barge-in stops within the current slice but
-may still play out a short tail of already-buffered audio. An abort
-(``Pa_AbortStream``) path on the output protocol would discard it; that is a
-device-layer change confirmed on real hardware (WP7), not a WP5 concern.
+write short, so the flag is re-checked promptly, and barge-in aborts the output
+(``Pa_AbortStream``) so already-buffered audio is discarded rather than drained.
 """
 
 from __future__ import annotations
@@ -68,15 +63,28 @@ class SpeechPlayer:
         """Request barge-in: stop playback now and cancel the provider request.
 
         Sets the flag and, if a :meth:`speak` is in progress, the stop event it
-        races against, and stops the output device immediately so audio that is
-        already playing (including a blocking device write) ceases at once.
-        Safe to call when nothing is playing; the flag is reset at the start of
-        the next :meth:`speak`.
+        races against, and aborts the output device immediately so audio that is
+        already playing (including a blocking device write and any audio already
+        buffered) ceases at once. Safe to call when nothing is playing; the flag
+        is reset at the start of the next :meth:`speak`.
         """
         self._interrupted = True
         if self._stop is not None:
             self._stop.set()
         if self._speaking:
+            self._abort_output()
+
+    def _abort_output(self) -> None:
+        """Abort the output, discarding buffered audio.
+
+        Prefers the protocol's :meth:`~voxoracle.audio.protocols.AudioOutput.abort`
+        (``Pa_AbortStream``: discards the buffer) and falls back to ``stop`` for
+        simpler sinks that only drain.
+        """
+        abort = getattr(self._output, "abort", None)
+        if callable(abort):
+            abort()
+        else:  # pragma: no cover - every real output implements abort
             self._output.stop()
 
     async def speak(self, text: str, *, voice: str | None = None) -> None:
@@ -112,7 +120,7 @@ class SpeechPlayer:
         slice_samples = max(1, round(sample_rate * PLAY_SLICE_SECONDS))
         for start in range(0, samples.size, slice_samples):
             if self._interrupted:
-                self._output.stop()
+                self._abort_output()
                 return
             await asyncio.to_thread(self._output.write, samples[start : start + slice_samples])
 

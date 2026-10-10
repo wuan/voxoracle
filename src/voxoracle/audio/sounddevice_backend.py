@@ -161,6 +161,10 @@ class SoundDeviceOutput:
     def stop(self) -> None:
         self._stream.stop()
 
+    def abort(self) -> None:
+        """Abort playback, discarding buffered audio (``Pa_AbortStream``)."""
+        self._stream.abort()
+
     def close(self) -> None:
         self._stream.stop()
         self._stream.close()

@@ -567,6 +567,7 @@ class FakeOutput(AudioOutput):
         self._sample_rate = sample_rate
         self.written: list[np.ndarray] = []
         self.stopped = False
+        self.aborted = False
         self.closed = False
 
     @property
@@ -578,6 +579,9 @@ class FakeOutput(AudioOutput):
 
     def stop(self) -> None:
         self.stopped = True
+
+    def abort(self) -> None:
+        self.aborted = True
 
     def close(self) -> None:
         self.closed = True
@@ -690,7 +694,10 @@ def test_blocking_write_does_not_stall_the_event_loop() -> None:
     assert len(output.written) == 1
 
 
-def test_barge_in_can_interrupt_during_a_blocking_write() -> None:
+def test_barge_in_aborts_output_while_write_is_still_blocked() -> None:
+    # interrupt() must abort the output immediately, without waiting for the
+    # in-flight blocking write to return. The write stays blocked here on
+    # purpose: playback must stop within a bound regardless of the release.
     synth = FakeSynthesizer([np.zeros(10, dtype=np.int16) for _ in range(2)])
     output = BlockingOutput()
     player = SpeechPlayer(synth, output)
@@ -699,18 +706,17 @@ def test_barge_in_can_interrupt_during_a_blocking_write() -> None:
         speak_task = asyncio.create_task(player.speak("Ein langer Satz"))
         while not output.write_started.is_set():
             await asyncio.sleep(0)
-        # The loop is responsive during the blocking write, so barge-in lands now.
+        # Barge-in lands while the write is still blocked.
         player.interrupt()
-        # interrupt() must stop the device itself, without waiting for the
-        # in-flight (still-blocked) write to return.
-        assert output.stopped
+        assert output.aborted  # output cancelled synchronously, write not returned
         output.release.set()
-        await speak_task
+        # speak() must return promptly once the write unblocks.
+        await asyncio.wait_for(speak_task, timeout=1.0)
 
     run(scenario())
 
     assert player.interrupted
-    assert output.stopped
+    assert output.aborted
     # The first chunk was played; barge-in landed during its blocking write, so
     # the second chunk is never fetched or written.
     assert synth.yielded == 1
@@ -746,7 +752,7 @@ def test_long_chunk_is_written_in_bounded_slices() -> None:
     assert all(len(part) <= expected_slice for part in output.written)
     # Stopped well before the whole 3 s chunk was written.
     assert sum(len(part) for part in output.written) < long_chunk.size
-    assert output.stopped
+    assert output.aborted
 
 
 class StallingSynthesizer:
@@ -789,7 +795,7 @@ def test_barge_in_cancels_a_stalled_stream_promptly() -> None:
 
     assert player.interrupted
     assert synth.closed  # the in-flight provider stream was cancelled
-    assert output.stopped
+    assert output.aborted
     assert len(output.written) == 1
 
 
@@ -831,7 +837,7 @@ def test_barge_in_cancels_mid_stream() -> None:
 
     assert synth.yielded == 2  # stopped consuming after the interrupt
     assert synth.closed  # provider stream closed / request cancelled
-    assert output.stopped
+    assert output.aborted
     assert player.interrupted
     # The second chunk was abandoned (not written) as soon as barge-in was set.
     assert len(output.written) == 1

@@ -55,6 +55,14 @@ class AudioOutput(Protocol):
 
     def stop(self) -> None: ...
 
+    def abort(self) -> None:
+        """Stop immediately, discarding buffered audio (for barge-in).
+
+        Unlike :meth:`stop`, which drains already-buffered audio, this abandons
+        it so playback ceases at once.
+        """
+        ...
+
     def close(self) -> None: ...
 
 
