@@ -117,9 +117,11 @@ def test_pcm_length_must_be_multiple_of_four() -> None:
         pcm_float32_to_int16(b"\x00\x00\x00")
 
 
-def test_wav_to_int16_reads_mono_pcm() -> None:
+def test_wav_to_int16_reads_mono_pcm_and_rate() -> None:
     samples = np.array([1, 2, 3, 4], dtype=np.int16)
-    assert list(wav_to_int16(wav_bytes(samples))) == [1, 2, 3, 4]
+    decoded, frame_rate = wav_to_int16(wav_bytes(samples, sample_rate=22050))
+    assert list(decoded) == [1, 2, 3, 4]
+    assert frame_rate == 22050
 
 
 def test_wav_to_int16_downmixes_stereo() -> None:
@@ -130,7 +132,9 @@ def test_wav_to_int16_downmixes_stereo() -> None:
         handle.setsampwidth(2)
         handle.setframerate(16000)
         handle.writeframes(frames)
-    assert list(wav_to_int16(buffer.getvalue())) == [10, 30]
+    decoded, frame_rate = wav_to_int16(buffer.getvalue())
+    assert list(decoded) == [10, 30]
+    assert frame_rate == 16000
 
 
 def test_non_wav_bytes_are_malformed() -> None:
@@ -306,12 +310,14 @@ def test_non_streaming_wav_returns_single_chunk() -> None:
         body = json.loads(request.content)
         assert body["stream"] is False
         assert body["response_format"] == "wav"
-        encoded = base64.b64encode(wav_bytes(samples)).decode()
+        encoded = base64.b64encode(wav_bytes(samples, sample_rate=16000)).decode()
         return httpx.Response(200, json={"audio_data": encoded})
 
     chunks = synthesize(handler, stream=False, response_format="wav")
     assert len(chunks) == 1
     assert list(chunks[0].samples) == [5, 6, 7]
+    # The WAV header rate (16 kHz) is authoritative, not the configured 24 kHz.
+    assert chunks[0].sample_rate == 16000
 
 
 # --- malformed responses ------------------------------------------------------

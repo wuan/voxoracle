@@ -16,9 +16,9 @@ Two response shapes are supported:
 Decoding turns the provider's wire format into mono 16-bit PCM
 (:class:`~voxoracle.tts.protocol.SpeechChunk`), which the WP2 ``AudioOutput``
 layer plays. ``pcm`` is raw little-endian float32 samples (Mistral's recommended
-format for streaming); ``wav`` is a PCM WAV container. Because Mistral does not
-publish the PCM sample rate, it is configurable (``sample_rate``) and defaults to
-24 kHz.
+format for streaming) whose sample rate is not published by the provider, so it
+is configurable (``sample_rate``, default 24 kHz); ``wav`` is a PCM WAV
+container whose header carries the authoritative frame rate.
 """
 
 from __future__ import annotations
@@ -60,8 +60,13 @@ def pcm_float32_to_int16(data: bytes) -> NDArray[np.int16]:
     return np.round(clipped * 32767.0).astype(np.int16)
 
 
-def wav_to_int16(data: bytes) -> NDArray[np.int16]:
-    """Decode a 16-bit mono PCM WAV byte string to int16 samples."""
+def wav_to_int16(data: bytes) -> tuple[NDArray[np.int16], int]:
+    """Decode a 16-bit mono PCM WAV byte string to int16 samples and its rate.
+
+    The WAV header carries the authoritative sample rate, which is returned so
+    the caller plays the audio at the right speed instead of trusting a
+    configured guess.
+    """
     try:
         with wave.open(io.BytesIO(data), "rb") as handle:
             if handle.getsampwidth() != 2:
@@ -69,13 +74,14 @@ def wav_to_int16(data: bytes) -> NDArray[np.int16]:
                     f"expected a 16-bit WAV, got {handle.getsampwidth() * 8}-bit"
                 )
             channels = handle.getnchannels()
+            frame_rate = handle.getframerate()
             frames = handle.readframes(handle.getnframes())
     except wave.Error as exc:
         raise MistralResponseError(f"invalid WAV audio: {exc}") from exc
     samples = np.frombuffer(frames, dtype="<i2")
     if channels > 1:
         samples = samples.reshape(-1, channels)[:, 0]
-    return np.ascontiguousarray(samples)
+    return np.ascontiguousarray(samples), frame_rate
 
 
 def _decode_base64(encoded: str) -> bytes:
@@ -224,5 +230,8 @@ class MistralSpeechSynthesizer:
         return payloads
 
     def _chunk(self, raw: bytes) -> SpeechChunk:
-        samples = pcm_float32_to_int16(raw) if self._response_format == "pcm" else wav_to_int16(raw)
-        return SpeechChunk(samples=samples, sample_rate=self._sample_rate)
+        if self._response_format == "wav":
+            # The WAV header's frame rate is authoritative for this chunk.
+            samples, frame_rate = wav_to_int16(raw)
+            return SpeechChunk(samples=samples, sample_rate=frame_rate)
+        return SpeechChunk(samples=pcm_float32_to_int16(raw), sample_rate=self._sample_rate)
