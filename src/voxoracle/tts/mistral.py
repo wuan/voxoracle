@@ -170,8 +170,15 @@ class MistralSpeechSynthesizer:
             # An SSE event is terminated by a blank line; emit only complete ones.
             while b"\n\n" in buffer:
                 event, buffer = buffer.split(b"\n\n", 1)
-                for data in self._event_audio_data(event):
-                    yield self._chunk(_decode_base64(data))
+                for chunk in self._chunks_from_event(event):
+                    yield chunk
+        # Flush a trailing event if the stream did not end with a blank line.
+        if buffer.strip():
+            for chunk in self._chunks_from_event(buffer):
+                yield chunk
+
+    def _chunks_from_event(self, event: bytes) -> list[SpeechChunk]:
+        return [self._chunk(_decode_base64(data)) for data in self._event_audio_data(event)]
 
     @staticmethod
     def _audio_data(body: Any) -> str:

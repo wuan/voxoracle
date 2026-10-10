@@ -202,6 +202,19 @@ def test_stream_handles_event_name_done_frame() -> None:
     assert len(chunks) == 1
 
 
+def test_stream_flushes_trailing_event_without_blank_line() -> None:
+    delta = base64.b64encode(pcm_bytes([0.0])).decode()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        # A final delta with no terminating blank line before EOF.
+        body = b"data: " + json.dumps({"audio_data": delta}).encode()
+        return httpx.Response(200, content=body, headers={"content-type": "text/event-stream"})
+
+    chunks = synthesize(handler)
+    assert len(chunks) == 1
+    assert len(chunks[0].samples) == 1
+
+
 def test_stream_handles_crlf_event_boundaries() -> None:
     frame = {
         "type": "speech.audio.delta",
