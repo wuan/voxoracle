@@ -79,6 +79,24 @@ def test_cli_setup_is_idempotent(tmp_path, monkeypatch) -> None:
     assert "already present" in result.stdout
 
 
+def test_cli_setup_reports_invalid_config(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config.yaml").write_text("audio:\n  sample_rate: 0\n", encoding="utf-8")
+    result = runner.invoke(app, ["setup"])
+    assert result.exit_code == 1
+    assert "invalid configuration" in result.stderr
+    # Bootstrap aborts cleanly: no directories created.
+    assert not (tmp_path / "models").exists()
+
+
+def test_cli_setup_reports_bad_yaml(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config.yaml").write_text("audio: [unclosed\n", encoding="utf-8")
+    result = runner.invoke(app, ["setup"])
+    assert result.exit_code == 1
+    assert "invalid configuration" in result.stderr
+
+
 def test_cli_setup_reports_bare_name_expected_path(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     result = runner.invoke(app, ["setup"])

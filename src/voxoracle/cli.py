@@ -129,7 +129,12 @@ def doctor() -> None:
 @app.command()
 def setup() -> None:
     """Prepare the device: create runtime directories and report model status."""
-    settings = load_settings()
+    try:
+        settings = load_settings()
+    except Exception as exc:  # noqa: BLE001 - report config errors like doctor does
+        typer.echo(f"error: invalid configuration: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+
     typer.echo("Preparing VoxOracle directories...")
     for label, path, created in diagnostics.prepare_directories(settings):
         state = "created" if created else "already present"
