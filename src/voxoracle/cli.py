@@ -20,7 +20,7 @@ from voxoracle import diagnostics
 from voxoracle.config import Settings, load_settings
 from voxoracle.docoracle.client import DocOracleClient, DocOracleError
 from voxoracle.docoracle.models import AskRequest
-from voxoracle.session.build import build_session
+from voxoracle.session.build import SessionComponents, build_session
 
 app = typer.Typer(
     name="voxoracle",
@@ -60,29 +60,34 @@ async def _serve(settings: Settings) -> None:
 
     ``SIGINT``/``SIGTERM`` are wired to a cooperative stop *before* any device is
     opened (rather than relying on the default handler that raises
-    ``KeyboardInterrupt`` and cancels the main task mid-await). This closes the
-    window where a Ctrl-C during component build would escape as a bare
-    traceback: with the handler installed, Ctrl-C only sets the session's stop
-    flag, and the run unwinds at the next step or frame boundary before
+    ``KeyboardInterrupt`` and cancels the main task mid-await). The handler
+    forwards to the session's :meth:`~VoiceSession.request_stop`, so a Ctrl-C
+    both during the synchronous build and during the run ends the loop at the
+    next step or frame boundary; the run then unwinds before
     :meth:`SessionComponents.aclose` closes the device streams and HTTP clients.
     """
     loop = asyncio.get_running_loop()
-    stopped = asyncio.Event()
+    components: SessionComponents | None = None
+
+    def on_signal() -> None:
+        # The session is the only thing that observes a stop request: replacing
+        # the default SIGINT handler means nothing raises KeyboardInterrupt. A
+        # signal that arrives during the synchronous build is delivered when the
+        # loop next runs (at the session's first await), by which point
+        # ``components`` is set, so this forwards it to the just-built session.
+        if components is not None:
+            components.session.request_stop()
+
     installed: list[signal.Signals] = []
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
-            loop.add_signal_handler(sig, stopped.set)
+            loop.add_signal_handler(sig, on_signal)
         except NotImplementedError:  # pragma: no cover - not on this platform
             continue
         installed.append(sig)
 
     try:
         components = build_session(settings)
-        # A signal during the (synchronous) build set the flag but could not
-        # reach the session yet; forward it so the run returns at once and still
-        # closes the just-opened devices.
-        if stopped.is_set():
-            components.session.request_stop()
         try:
             await components.session.run()
         finally:
