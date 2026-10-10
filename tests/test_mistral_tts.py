@@ -827,6 +827,12 @@ class AbortedWriteOutput(FakeOutput):
             time.sleep(0.001)
         self.written.append(samples)
 
+    def abort(self) -> None:
+        # Also fail if aborted twice, like a stopped stream on some hosts.
+        if self.aborted:
+            raise RuntimeError("abort on an already-stopped stream")
+        self.aborted = True
+
 
 def test_barge_in_swallows_write_failure_caused_by_our_abort() -> None:
     # Real Pa_WriteStream fails when we abort the stream mid-write; that failure
@@ -995,6 +1001,70 @@ def test_speak_does_not_restart_output_without_prior_abort() -> None:
     run(player.speak("Hallo"))
 
     assert output.started == 0  # nothing to resume
+
+
+class DoubleAbortOutput(FakeOutput):
+    """An abort() that raises if called twice, as a stopped stream might."""
+
+    def abort(self) -> None:
+        if self.aborted:
+            raise RuntimeError("abort on an already-stopped stream")
+        self.aborted = True
+
+
+def test_repeat_interrupt_does_not_reabort_the_output() -> None:
+    # The wake word can fire again while speak() winds down; a second interrupt
+    # must not abort the already-aborted output (which may raise on real hosts).
+    synth = FakeSynthesizer([np.zeros(10, dtype=np.int16) for _ in range(2)])
+    output = DoubleAbortOutput()
+    player = SpeechPlayer(synth, output)
+
+    async def scenario() -> None:
+        speak_task = asyncio.create_task(player.speak("Ein langer Satz"))
+        while not output.written:
+            await asyncio.sleep(0)
+        player.interrupt()
+        player.interrupt()  # second barge-in while still winding down
+        await asyncio.wait_for(speak_task, timeout=1.0)
+
+    run(scenario())  # must not raise from the second abort
+
+    assert output.aborted
+
+
+def test_slice_boundary_abort_is_not_a_reabort() -> None:
+    # _play re-checks the interrupt at each slice boundary and aborts there; if
+    # interrupt() already aborted, that second abort must be a no-op too. Here
+    # the in-flight write succeeds (a host where a stopped stream still accepts
+    # a write), so the loop reaches the boundary abort.
+    class BlockingThenOkOutput(DoubleAbortOutput):
+        def __init__(self, sample_rate: int = SAMPLE_RATE) -> None:
+            super().__init__(sample_rate)
+            self.write_started = threading.Event()
+            self.release = threading.Event()
+
+        def write(self, samples: np.ndarray) -> None:
+            self.write_started.set()
+            assert self.release.wait(timeout=5.0)
+            self.written.append(samples)
+
+    long_chunk = np.zeros(SAMPLE_RATE, dtype=np.int16)  # several 0.1 s slices
+    synth = FakeSynthesizer([long_chunk], sample_rate=SAMPLE_RATE)
+    output = BlockingThenOkOutput(sample_rate=SAMPLE_RATE)
+    player = SpeechPlayer(synth, output)
+
+    async def scenario() -> None:
+        speak_task = asyncio.create_task(player.speak("Ein langer Satz"))
+        while not output.write_started.is_set():
+            await asyncio.sleep(0)
+        player.interrupt()  # aborts; the slice write succeeds, so _play loops
+        output.release.set()
+        await asyncio.wait_for(speak_task, timeout=2.0)
+
+    run(scenario())  # must not raise from the slice-boundary abort
+
+    assert output.aborted
+    assert len(output.written) == 1  # stopped after the first slice
 
 
 # --- config resolution --------------------------------------------------------

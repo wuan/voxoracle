@@ -84,11 +84,16 @@ class SpeechPlayer:
     def _abort_output(self) -> None:
         """Abort the output, discarding buffered audio.
 
-        Prefers the protocol's :meth:`~voxoracle.audio.protocols.AudioOutput.abort`
-        (``Pa_AbortStream``: discards the buffer) and falls back to ``stop`` for
-        simpler sinks that only drain. Records that the output must be restarted
-        before it can play again.
+        Idempotent: a repeat call (a second :meth:`interrupt`, or the slice
+        boundary in :meth:`_play` after :meth:`interrupt` already aborted) is a
+        no-op, so we never abort an already-stopped stream - ``Pa_AbortStream``
+        on a stopped stream may raise on some hosts. Prefers the protocol's
+        :meth:`~voxoracle.audio.protocols.AudioOutput.abort` (``Pa_AbortStream``:
+        discards the buffer) and falls back to ``stop`` for simpler sinks that
+        only drain. Records that the output must be restarted before it plays.
         """
+        if self._output_aborted:
+            return
         abort = getattr(self._output, "abort", None)
         if callable(abort):
             abort()
