@@ -15,7 +15,7 @@ def test_defaults_without_file(tmp_path, monkeypatch) -> None:
     settings = load_settings()
     assert settings.docoracle.url == "http://localhost:8000"
     assert settings.docoracle.timeout == 60.0
-    assert settings.wakeword.model == "franz"
+    assert settings.wakeword.model == "hey-franz"
     assert settings.session.barge_in is True
     assert settings.logging.level == "INFO"
 
@@ -85,7 +85,7 @@ def test_invalid_audio_settings_are_rejected(tmp_path) -> None:
 def test_wakeword_defaults(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     settings = load_settings()
-    assert settings.wakeword.model == "franz"
+    assert settings.wakeword.model == "hey-franz"
     assert settings.wakeword.models_dir == "models"
     assert settings.wakeword.threshold == 0.5
 

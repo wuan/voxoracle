@@ -1,4 +1,4 @@
-"""Wake-word detection ("Franz") using openWakeWord.
+"""Wake-word detection ("Hey Franz") using openWakeWord.
 
 The detector sits behind the :class:`~voxoracle.wakeword.detector.WakeWordDetector`
 protocol so it stays swappable and testable without audio hardware.

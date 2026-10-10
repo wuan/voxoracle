@@ -175,7 +175,7 @@ def check_wakeword(settings: Settings) -> CheckResult:
             detail=(
                 f"configured {configured!r} not found in {models_dir}; "
                 f"using placeholder {PLACEHOLDER_MODEL!r} (detects the placeholder "
-                "phrase, not 'Franz')"
+                "phrase, not 'Hey Franz')"
             ),
             hints=[f"drop a trained model at {expected}"],
         )

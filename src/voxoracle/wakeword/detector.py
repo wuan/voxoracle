@@ -1,4 +1,4 @@
-"""Wake-word detection ("Franz") using openWakeWord.
+"""Wake-word detection ("Hey Franz") using openWakeWord.
 
 The detector is a thin streaming adapter: it accepts the fixed-size 16 kHz mono
 frames produced by the WP2 audio capture, buffers them into openWakeWord's 80 ms
@@ -7,10 +7,10 @@ threshold. Inference runs locally through openWakeWord's ONNX backend.
 
 Model acquisition
 -----------------
-openWakeWord ships no pretrained "Franz" model, and training one requires the
+openWakeWord ships no pretrained "Hey Franz" model, and training one requires the
 upstream synthetic-data pipeline (piper TTS plus large negative corpora) that is
 out of scope for CI. The model path is therefore fully configurable
-(:func:`resolve_model_path`) so a real ``franz.onnx`` can be dropped in via
+(:func:`resolve_model_path`) so a real ``hey-franz.onnx`` can be dropped in via
 ``voxoracle setup`` without code changes; until then a pretrained placeholder
 model is used. See ``openspec/changes/add-voxoracle-core/design.md``.
 """
@@ -28,8 +28,8 @@ from voxoracle.wakeword.errors import WakeWordError, WakeWordModelNotFoundError
 # openWakeWord consumes 80 ms blocks (1280 samples at 16 kHz).
 BLOCK_SAMPLES = 1280
 
-# Fallback used when no "franz" model is present. Clearly a placeholder: it
-# detects the phrase "hey jarvis", not "Franz".
+# Fallback used when no "hey-franz" model is present. Clearly a placeholder: it
+# detects the phrase "hey jarvis", not "Hey Franz".
 PLACEHOLDER_MODEL = "hey_jarvis"
 
 
@@ -59,7 +59,7 @@ def resolve_model_path(model: str | Path, models_dir: Path) -> Path:
     An explicit ``.onnx`` path (or an absolute path) is used as-is and must
     exist. A bare name resolves to ``<models_dir>/<name>.onnx``; if that file is
     absent the bundled placeholder model is used, so the appliance starts even
-    before a purpose-trained ``franz.onnx`` is installed. Raises
+    before a purpose-trained ``hey-franz.onnx`` is installed. Raises
     :class:`WakeWordModelNotFoundError` only when an explicit path is missing or
     no placeholder is available.
     """

@@ -19,7 +19,7 @@ citations available on request.
 
 VoxOracle runs as a **headless, voice-only appliance** on a Raspberry Pi 3 with
 a microphone and a speaker. There is no screen and no browser: you activate it
-with the wake word **"Franz"**, and it listens, answers, and listens again.
+with the wake word **"Hey Franz"**, and it listens, answers, and listens again.
 
 Named in the spirit of its parent: if DocOracle is the oracle of your docs,
 VoxOracle is its voice.
@@ -27,12 +27,12 @@ VoxOracle is its voice.
 ## How it works
 
 ```
-You (speech) ─▶ Wake word "Franz" (local) ─▶ Speech-to-Text (cloud) ─▶ DocOracle /ask ─▶ LLM + RAG retrieval
+You (speech) ─▶ Wake word "Hey Franz" (local) ─▶ Speech-to-Text (cloud) ─▶ DocOracle /ask ─▶ LLM + RAG retrieval
                                                                                                    │
 You (hearing) ◀─ Text-to-Speech (cloud) ◀─ Answer + citations ◀─────────────────────────────────────┘
 ```
 
-1. Capture — openWakeWord detects the wake word "Franz" locally (no cloud
+1. Capture — openWakeWord detects the wake word "Hey Franz" locally (no cloud
    round-trip), and the appliance records the question from its microphone.
 2. Ask — the transcribed question is sent to a running DocOracle server via its
    HTTP API (`POST /ask`).
@@ -48,7 +48,7 @@ which guarantees the two projects can evolve independently.
 
 ## Features
 
-- **Hands-free activation** — the wake word "Franz", detected locally using
+- **Hands-free activation** — the wake word "Hey Franz", detected locally using
   [openWakeWord](https://github.com/dscripka/openWakeWord); no buttons, no
   screen, no browser.
 - **Grounded answers** — every spoken answer carries DocOracle's citations
@@ -233,7 +233,7 @@ audio:
 
 wakeword:
   engine: openwakeword
-  model: franz
+  model: hey-franz
   threshold: 0.5               # Detection threshold in [0, 1]
 
 mistral:
@@ -278,7 +278,7 @@ DocOracle.
 ```
 src/voxoracle/
 ├── audio/        # device enumeration, capture, playback, resampling, VAD
-├── wakeword/     # wake-word detector (openWakeWord, "Franz") + models
+├── wakeword/     # wake-word detector (openWakeWord, "Hey Franz") + models
 ├── stt/          # cloud speech-to-text backends + protocol
 ├── tts/          # cloud text-to-speech backends + protocol
 ├── docoracle/    # typed HTTP client for /ask, /health, /info

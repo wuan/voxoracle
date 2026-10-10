@@ -113,7 +113,7 @@ def test_check_wakeword_falls_back_to_placeholder(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     settings = diagnostics.default_settings()
     result = diagnostics.check_wakeword(settings)
-    # No franz.onnx present and openWakeWord may not be importable: either the
+    # No hey-franz.onnx present and openWakeWord may not be importable: either the
     # placeholder warns, or the model is unresolvable (fail) with a setup hint.
     assert result.severity in (Severity.WARN, Severity.FAIL)
     if result.severity is Severity.WARN:
@@ -123,11 +123,11 @@ def test_check_wakeword_falls_back_to_placeholder(tmp_path, monkeypatch):
 def test_check_wakeword_finds_configured_model(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "models").mkdir()
-    (tmp_path / "models" / "franz.onnx").write_bytes(b"stub")
+    (tmp_path / "models" / "hey-franz.onnx").write_bytes(b"stub")
     settings = diagnostics.default_settings()
     result = diagnostics.check_wakeword(settings)
     assert result.severity is Severity.OK
-    assert "franz.onnx" in result.detail
+    assert "hey-franz.onnx" in result.detail
 
 
 def test_check_wakeword_explicit_path_hint_has_no_double_suffix(tmp_path, monkeypatch):

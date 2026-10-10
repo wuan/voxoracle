@@ -36,7 +36,7 @@ def negative_frame() -> np.ndarray:
 class FakeScorer:
     """Returns a fixed score for a configured model name."""
 
-    def __init__(self, score: float, name: str = "franz") -> None:
+    def __init__(self, score: float, name: str = "hey-franz") -> None:
         self._score = score
         self._name = name
         self.blocks_seen = 0
@@ -53,25 +53,25 @@ class FakeScorer:
 
 class TestOpenWakeWordDetector:
     def test_triggers_at_or_above_threshold(self) -> None:
-        detector = OpenWakeWordDetector(FakeScorer(0.9), "franz", threshold=0.5)
+        detector = OpenWakeWordDetector(FakeScorer(0.9), "hey-franz", threshold=0.5)
         assert detector.process(np.zeros(BLOCK_SAMPLES, dtype=np.int16)) is True
 
     def test_no_trigger_below_threshold(self) -> None:
-        detector = OpenWakeWordDetector(FakeScorer(0.3), "franz", threshold=0.5)
+        detector = OpenWakeWordDetector(FakeScorer(0.3), "hey-franz", threshold=0.5)
         assert detector.process(np.zeros(BLOCK_SAMPLES, dtype=np.int16)) is False
 
     def test_threshold_is_honored(self) -> None:
         frame = np.zeros(BLOCK_SAMPLES, dtype=np.int16)
-        assert OpenWakeWordDetector(FakeScorer(0.6), "franz", threshold=0.5).process(frame)
-        assert not OpenWakeWordDetector(FakeScorer(0.6), "franz", threshold=0.7).process(frame)
+        assert OpenWakeWordDetector(FakeScorer(0.6), "hey-franz", threshold=0.5).process(frame)
+        assert not OpenWakeWordDetector(FakeScorer(0.6), "hey-franz", threshold=0.7).process(frame)
 
     def test_missing_model_score_is_no_trigger(self) -> None:
-        detector = OpenWakeWordDetector(FakeScorer(0.99, name="other"), "franz")
+        detector = OpenWakeWordDetector(FakeScorer(0.99, name="other"), "hey-franz")
         assert detector.process(np.zeros(BLOCK_SAMPLES, dtype=np.int16)) is False
 
     def test_frames_are_buffered_into_blocks(self) -> None:
         scorer = FakeScorer(0.9)
-        detector = OpenWakeWordDetector(scorer, "franz", threshold=0.5)
+        detector = OpenWakeWordDetector(scorer, "hey-franz", threshold=0.5)
         # 3 x 30 ms frames == 1440 samples > one 1280-sample block
         assert detector.process(np.zeros(FRAME_SAMPLES, dtype=np.int16)) is False
         assert detector.process(np.zeros(FRAME_SAMPLES, dtype=np.int16)) is False
@@ -80,7 +80,7 @@ class TestOpenWakeWordDetector:
 
     def test_reset_clears_partial_buffer(self) -> None:
         scorer = FakeScorer(0.9)
-        detector = OpenWakeWordDetector(scorer, "franz", threshold=0.5)
+        detector = OpenWakeWordDetector(scorer, "hey-franz", threshold=0.5)
         detector.process(np.zeros(FRAME_SAMPLES, dtype=np.int16))
         detector.reset()
         assert detector.process(np.zeros(BLOCK_SAMPLES, dtype=np.int16)) is True
@@ -88,13 +88,13 @@ class TestOpenWakeWordDetector:
 
     def test_reset_also_resets_the_scorer(self) -> None:
         scorer = FakeScorer(0.9)
-        detector = OpenWakeWordDetector(scorer, "franz", threshold=0.5)
+        detector = OpenWakeWordDetector(scorer, "hey-franz", threshold=0.5)
         detector.reset()
         assert scorer.resets == 1
 
     def test_invalid_threshold_is_rejected(self) -> None:
         with pytest.raises(ValueError):
-            OpenWakeWordDetector(FakeScorer(0.5), "franz", threshold=2.0)
+            OpenWakeWordDetector(FakeScorer(0.5), "hey-franz", threshold=2.0)
 
 
 class TestResolveModelPath:
@@ -110,13 +110,13 @@ class TestResolveModelPath:
     def test_named_model_under_models_dir(self, tmp_path: Path) -> None:
         models_dir = tmp_path / "models"
         models_dir.mkdir()
-        model = models_dir / "franz.onnx"
+        model = models_dir / "hey-franz.onnx"
         model.write_bytes(b"x")
-        assert resolve_model_path("franz", models_dir) == model
+        assert resolve_model_path("hey-franz", models_dir) == model
 
     def test_missing_named_model_falls_back_to_placeholder(self, tmp_path: Path) -> None:
-        # The default "franz" name must not prevent the appliance from starting.
-        path = resolve_model_path("franz", tmp_path / "models")
+        # The default "hey-franz" name must not prevent the appliance from starting.
+        path = resolve_model_path("hey-franz", tmp_path / "models")
         assert path.suffix == ".onnx"
         assert path.is_file()
 
@@ -163,6 +163,6 @@ class TestRealOnnxAdapter:
         noise = (rng.integers(-500, 500, size=16000)).astype(np.int16)
         assert self.feed(self.detector(), noise) is False
 
-    def test_placeholder_does_not_trigger_on_franz(self) -> None:
-        # Documents the current gap: the placeholder detects "hey jarvis", not "Franz".
-        assert self.feed(self.detector(), read_fixture("franz.wav")) is False
+    def test_placeholder_does_not_trigger_on_hey_franz(self) -> None:
+        # Documents the current gap: the placeholder detects "hey jarvis", not "Hey Franz".
+        assert self.feed(self.detector(), read_fixture("hey-franz.wav")) is False
