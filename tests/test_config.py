@@ -116,6 +116,7 @@ def test_stt_defaults_are_mistral_german(tmp_path, monkeypatch) -> None:
 
 def test_mistral_api_key_from_config(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("VXORACLE_MISTRAL__API_KEY", raising=False)
     monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
     monkeypatch.delenv("LLM_API_KEY", raising=False)
     config = tmp_path / "config.yaml"
