@@ -111,8 +111,9 @@ class MistralAudioClient:
         Used for endpoints that return ``text/event-stream`` (e.g. Mistral speech
         synthesis). The request is established with the same bounded retry policy
         as :meth:`post_json`; once the response starts streaming, its body is
-        yielded as-is and a mid-stream failure is propagated (a streaming request
-        cannot be safely retried).
+        yielded as-is. A mid-stream timeout or transport failure is surfaced as
+        the same typed error as the buffered path but is not retried, since a
+        partly-consumed streaming response cannot be safely retried.
         """
         async for chunk in self._stream_request(path, json=dict(json)):
             yield chunk
@@ -243,6 +244,15 @@ class MistralAudioClient:
                     try:
                         async for chunk in response.aiter_bytes():
                             yield chunk
+                    except httpx.TimeoutException as exc:
+                        # A failure after the headers arrived cannot be retried
+                        # (the body is already partly consumed); surface it as the
+                        # same typed error as the buffered path.
+                        raise MistralTimeoutError(f"Mistral timed out at {path}: {exc}") from exc
+                    except httpx.TransportError as exc:
+                        raise MistralConnectionError(
+                            f"connection lost mid-stream at {path}: {exc}"
+                        ) from exc
                     finally:
                         await response.aclose()
                     return

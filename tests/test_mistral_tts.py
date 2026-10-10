@@ -405,6 +405,51 @@ def test_stream_connection_error_raises() -> None:
         synthesize(handler, retries=1)
 
 
+class _FailingStream(httpx.AsyncByteStream):
+    """Yields one frame, then raises the given transport error mid-stream."""
+
+    def __init__(self, error: Exception) -> None:
+        self._error = error
+
+    async def __aiter__(self) -> AsyncIterator[bytes]:
+        yield b"data: {"  # incomplete frame: buffered, produces no event yet
+        raise self._error
+
+
+def test_mid_stream_timeout_is_a_typed_error() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(
+            200,
+            stream=_FailingStream(httpx.ReadTimeout("late timeout", request=request)),
+            headers={"content-type": "text/event-stream"},
+        )
+
+    with pytest.raises(MistralTimeoutError):
+        synthesize(handler, retries=2)
+    assert calls == 1  # a mid-stream failure is not retried
+
+
+def test_mid_stream_transport_error_is_a_typed_error() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(
+            200,
+            stream=_FailingStream(httpx.ReadError("connection lost", request=request)),
+            headers={"content-type": "text/event-stream"},
+        )
+
+    with pytest.raises(MistralConnectionError):
+        synthesize(handler, retries=2)
+    assert calls == 1
+
+
 def test_stream_retry_then_success() -> None:
     calls = 0
 
