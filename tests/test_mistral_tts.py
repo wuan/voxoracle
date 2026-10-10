@@ -7,6 +7,7 @@ import base64
 import io
 import json
 import threading
+import time
 import wave
 from collections.abc import AsyncIterator
 
@@ -772,6 +773,57 @@ def test_long_chunk_is_written_in_bounded_slices() -> None:
     # Stopped well before the whole 3 s chunk was written.
     assert sum(len(part) for part in output.written) < long_chunk.size
     assert output.aborted
+
+
+class AbortedWriteOutput(FakeOutput):
+    """A write that blocks like Pa_WriteStream and fails once the stream aborted."""
+
+    def __init__(self, sample_rate: int = SAMPLE_RATE) -> None:
+        super().__init__(sample_rate)
+        self.write_started = threading.Event()
+
+    def write(self, samples: np.ndarray) -> None:
+        self.write_started.set()
+        # Block until abort() is called, then fail as Pa_WriteStream does when
+        # the stream is aborted mid-write.
+        for _ in range(500):
+            if self.aborted:
+                raise RuntimeError("paOutputUnderflowed")
+            time.sleep(0.001)
+        self.written.append(samples)
+
+
+def test_barge_in_swallows_write_failure_caused_by_our_abort() -> None:
+    # Real Pa_WriteStream fails when we abort the stream mid-write; that failure
+    # is our own doing and must not escape speak().
+    long_chunk = np.zeros(SAMPLE_RATE * 3, dtype=np.int16)
+    synth = FakeSynthesizer([long_chunk], sample_rate=SAMPLE_RATE)
+    output = AbortedWriteOutput(sample_rate=SAMPLE_RATE)
+    player = SpeechPlayer(synth, output)
+
+    async def scenario() -> None:
+        speak_task = asyncio.create_task(player.speak("Ein langer Satz"))
+        while not output.write_started.is_set():
+            await asyncio.sleep(0)
+        player.interrupt()  # aborts the output; the in-flight write then fails
+        await asyncio.wait_for(speak_task, timeout=2.0)
+
+    run(scenario())  # must not raise
+
+    assert player.interrupted
+    assert output.aborted
+
+
+def test_write_failure_without_barge_in_propagates() -> None:
+    class BoomOutput(FakeOutput):
+        def write(self, samples: np.ndarray) -> None:
+            raise RuntimeError("device broken")
+
+    synth = FakeSynthesizer([np.zeros(10, dtype=np.int16)])
+    player = SpeechPlayer(synth, BoomOutput())
+
+    with pytest.raises(RuntimeError, match="device broken"):
+        run(player.speak("Hallo"))
 
 
 class StallingSynthesizer:

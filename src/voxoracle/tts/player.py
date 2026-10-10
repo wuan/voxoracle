@@ -29,6 +29,7 @@ write short, so the flag is re-checked promptly, and barge-in aborts the output
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
 
@@ -38,6 +39,8 @@ from numpy.typing import NDArray
 from voxoracle.audio.protocols import AudioOutput
 from voxoracle.audio.resample import resample
 from voxoracle.tts.protocol import SpeechChunk, Synthesizer
+
+_LOGGER = logging.getLogger(__name__)
 
 #: Longest audio slice handed to a single blocking device write. Bounds how long
 #: barge-in can wait for an in-flight write to return, independent of chunk size.
@@ -116,13 +119,25 @@ class SpeechPlayer:
             self._stop = None
 
     async def _play(self, samples: NDArray[np.int16], sample_rate: int) -> None:
-        """Write ``samples`` in bounded slices, stopping on barge-in."""
+        """Write ``samples`` in bounded slices, stopping on barge-in.
+
+        A slice write may fail because we aborted the stream (``interrupt``);
+        such a failure is swallowed once the interrupt is set, since the output
+        was deliberately aborted. Any other write failure propagates.
+        """
         slice_samples = max(1, round(sample_rate * PLAY_SLICE_SECONDS))
         for start in range(0, samples.size, slice_samples):
             if self._interrupted:
                 self._abort_output()
                 return
-            await asyncio.to_thread(self._output.write, samples[start : start + slice_samples])
+            try:
+                await asyncio.to_thread(self._output.write, samples[start : start + slice_samples])
+            except Exception:
+                if not self._interrupted:
+                    raise
+                # Our own abort made the blocking write fail; that is expected.
+                _LOGGER.debug("device write failed after barge-in abort", exc_info=True)
+                return
 
     async def _next_chunk(self, stream: AsyncGenerator[SpeechChunk]) -> SpeechChunk | None:
         """Return the next chunk, or ``None`` at end of stream or on interrupt.
