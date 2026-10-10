@@ -50,6 +50,7 @@
 - [x] 6.2 Implement a configurable cloud TTS backend with a German voice
 - [x] 6.3 Add streaming playback and barge-in support
 - [x] 6.4 Verify German answer text with a mocked provider and confirm barge-in stops playback
+- [ ] 6.5 On-device (WP7) verify the real barge-in path and wire format: after `Pa_AbortStream` a write on the aborted stream must restart playback (the next utterance still plays); confirm Mistral's `pcm` sample rate and the SSE framing (including multi-line `data:` handling) against the live endpoint
 
 ## 7. WP6 — Voice session state machine
 

@@ -41,9 +41,6 @@ from voxoracle.tts.protocol import SpeechChunk
 SPEECH_PATH = "/audio/speech"
 DEFAULT_MODEL = "voxtral-mini-tts-2603"
 DEFAULT_LANGUAGE = "de"
-#: The configured language doubles as the default voice id (Mistral selects the
-#: voice by ``voice_id`` and has no separate language field).
-DEFAULT_VOICE = "de"
 DEFAULT_SAMPLE_RATE = 24000
 
 #: Response formats this backend can decode into PCM. Mistral also offers mp3,
@@ -57,10 +54,14 @@ SSE_EVENT_SEPARATOR = b"\n\n"
 
 
 def pcm_float32_to_int16(data: bytes) -> NDArray[np.int16]:
-    """Decode raw little-endian float32 samples (Mistral ``pcm``) to int16."""
+    """Decode raw little-endian float32 samples (Mistral ``pcm``) to int16.
+
+    Non-finite samples (NaN/inf) are treated as silence rather than propagated
+    into an undefined float->int cast.
+    """
     if len(data) % 4 != 0:
         raise MistralResponseError(f"pcm chunk length {len(data)} is not a multiple of 4")
-    floats = np.frombuffer(data, dtype="<f4")
+    floats = np.nan_to_num(np.frombuffer(data, dtype="<f4"), nan=0.0, posinf=1.0, neginf=-1.0)
     clipped = np.clip(floats, -1.0, 1.0)
     return np.round(clipped * 32767.0).astype(np.int16)
 

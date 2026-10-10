@@ -114,6 +114,11 @@ def test_pcm_clips_out_of_range() -> None:
     assert list(decoded) == [32767, -32767]
 
 
+def test_pcm_non_finite_samples_become_silence() -> None:
+    decoded = pcm_float32_to_int16(pcm_bytes([float("nan"), float("inf"), float("-inf")]))
+    assert list(decoded) == [0, 32767, -32767]
+
+
 def test_pcm_length_must_be_multiple_of_four() -> None:
     with pytest.raises(MistralResponseError):
         pcm_float32_to_int16(b"\x00\x00\x00")
