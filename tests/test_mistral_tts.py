@@ -564,6 +564,22 @@ def test_mid_stream_decoding_error_is_a_typed_error() -> None:
     assert calls == 1
 
 
+def test_redirect_status_on_stream_is_a_clear_status_error() -> None:
+    # follow_redirects is off; a 3xx must not be treated as a successful stream
+    # (which would feed the redirect body to the SSE parser and yield no audio).
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        return httpx.Response(302, headers={"Location": "https://elsewhere"}, text="Found")
+
+    with pytest.raises(MistralStatusError) as excinfo:
+        synthesize(handler, retries=1)
+    assert excinfo.value.status_code == 302
+    assert calls == 1  # not retried
+
+
 def test_stream_retry_then_success() -> None:
     calls = 0
 

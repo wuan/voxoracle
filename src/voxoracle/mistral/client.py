@@ -240,7 +240,9 @@ class MistralAudioClient:
             except httpx.TransportError as exc:
                 last_error = MistralConnectionError(f"cannot reach Mistral at {path}: {exc}")
             else:
-                if response.is_success:
+                # Explicit 2xx success, matching _classify's success definition,
+                # rather than relying on httpx.Response.is_success.
+                if 200 <= response.status_code < 300:
                     try:
                         async for chunk in response.aiter_bytes():
                             yield chunk
