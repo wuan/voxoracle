@@ -121,20 +121,15 @@ def setup() -> None:
         state = "created" if created else "already present"
         typer.echo(f"  {label}: {path} ({state})")
 
-    models_dir = diagnostics.resolve_models_dir(settings)
-    configured = settings.wakeword.model
-    model_path = models_dir / f"{configured}.onnx"
-    if model_path.is_file():
-        typer.echo(f"  wake word: {model_path} present")
-    else:
-        typer.echo(
-            f"  wake word: {model_path} missing — a placeholder model is used until "
-            f"a trained '{configured}.onnx' is added"
-        )
+    # Report the wake-word status with the same logic `doctor` uses, so setup
+    # and doctor agree for both bare names and explicit .onnx paths.
+    model = diagnostics.check_wakeword(settings)
+    typer.echo(f"  wake word: {model.detail}")
 
+    model_path = diagnostics.expected_model_path(settings)
     typer.echo("")
     typer.echo("Next steps:")
     typer.echo("  1. copy config.example.yaml to config.yaml and set docoracle.url")
     typer.echo("  2. provide a Mistral key (MISTRAL_API_KEY or LLM_API_KEY)")
-    typer.echo(f"  3. drop a trained wake-word model at {model_path}")
+    typer.echo(f"  3. ensure a trained wake-word model at {model_path}")
     typer.echo("  4. run `voxoracle doctor` to verify")

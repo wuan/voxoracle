@@ -133,21 +133,32 @@ def check_audio(settings: Settings, report: AudioDeviceReport) -> list[CheckResu
     return results
 
 
+def expected_model_path(settings: Settings) -> Path:
+    """Return where the configured wake-word model is expected to live.
+
+    An explicit ``.onnx`` path (or absolute path) is used as-is; a bare name
+    resolves to ``<models_dir>/<name>.onnx``, which is where a trained model
+    should be dropped. Shared by ``doctor`` and ``setup`` so they agree.
+    """
+    configured = settings.wakeword.model
+    if Path(configured).suffix == ".onnx" or Path(configured).is_absolute():
+        return Path(configured)
+    return resolve_models_dir(settings) / f"{configured}.onnx"
+
+
 def check_wakeword(settings: Settings) -> CheckResult:
     """Resolve the configured wake-word model and report its presence.
 
     Uses :func:`voxoracle.wakeword.resolve_model_path`, which falls back to the
-    bundled placeholder model when a bare name has no ``.onnx`` yet.
+    bundled placeholder model when a bare name has no ``.onnx`` yet. An explicit
+    path that is missing fails hard (``resolve_model_path`` raises).
     """
     from voxoracle.wakeword import PLACEHOLDER_MODEL, resolve_model_path
     from voxoracle.wakeword.errors import WakeWordError
 
     models_dir = resolve_models_dir(settings)
     configured = settings.wakeword.model
-    # An explicit .onnx path is used as-is; a bare name resolves under models_dir
-    # and is where a trained model should be dropped.
-    explicit = Path(configured).suffix == ".onnx" or Path(configured).is_absolute()
-    expected = Path(configured) if explicit else models_dir / f"{configured}.onnx"
+    expected = expected_model_path(settings)
     try:
         path = resolve_model_path(configured, models_dir)
     except WakeWordError as exc:

@@ -79,6 +79,27 @@ def test_cli_setup_is_idempotent(tmp_path, monkeypatch) -> None:
     assert "already present" in result.stdout
 
 
+def test_cli_setup_reports_bare_name_expected_path(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(app, ["setup"])
+    assert result.exit_code == 0
+    assert str(tmp_path / "models" / "franz.onnx") in result.stdout
+    assert "franz.onnx.onnx" not in result.stdout
+
+
+def test_cli_setup_handles_explicit_model_path(tmp_path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    missing = tmp_path / "custom.onnx"
+    (tmp_path / "config.yaml").write_text(
+        f"wakeword:\n  model: {missing}\n", encoding="utf-8"
+    )
+    result = runner.invoke(app, ["setup"])
+    assert result.exit_code == 0
+    # Expects the explicit path as-is, not a doubled .onnx suffix.
+    assert str(missing) in result.stdout
+    assert "custom.onnx.onnx" not in result.stdout
+
+
 def test_cli_doctor_exits_nonzero_without_docoracle(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     # No DocOracle reachable and no key configured -> hard-fail exit code.
