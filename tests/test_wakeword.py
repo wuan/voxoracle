@@ -163,6 +163,8 @@ class TestRealOnnxAdapter:
         noise = (rng.integers(-500, 500, size=16000)).astype(np.int16)
         assert self.feed(self.detector(), noise) is False
 
-    def test_placeholder_does_not_trigger_on_hey_franz(self) -> None:
-        # Documents the current gap: the placeholder detects "hey jarvis", not "Hey Franz".
-        assert self.feed(self.detector(), read_fixture("hey-franz.wav")) is False
+    def test_placeholder_does_not_trigger_on_other_speech(self) -> None:
+        # Documents the current gap: the hey_jarvis placeholder detects
+        # "hey jarvis" only, not the synthetic "Franz" clip (the wake word is
+        # "Hey Franz"; this fixture predates that phrase and is kept as-is).
+        assert self.feed(self.detector(), read_fixture("franz.wav")) is False
