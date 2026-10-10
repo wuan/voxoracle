@@ -50,6 +50,11 @@ DEFAULT_SAMPLE_RATE = 24000
 #: flac and opus, which need codecs VoxOracle does not carry.
 DECODABLE_FORMATS = ("pcm", "wav")
 
+#: SSE event terminator. An event block ends at a blank line; multi-line ``data:``
+#: fields within one event are NOT joined. Mistral sends one JSON payload per
+#: ``data:`` line, which is all this parser needs.
+SSE_EVENT_SEPARATOR = b"\n\n"
+
 
 def pcm_float32_to_int16(data: bytes) -> NDArray[np.int16]:
     """Decode raw little-endian float32 samples (Mistral ``pcm``) to int16."""
@@ -174,8 +179,8 @@ class MistralSpeechSynthesizer:
             # Normalise CRLF so an event boundary is always the blank line "\n\n".
             buffer = (buffer + frame).replace(b"\r\n", b"\n")
             # An SSE event is terminated by a blank line; emit only complete ones.
-            while b"\n\n" in buffer:
-                event, buffer = buffer.split(b"\n\n", 1)
+            while SSE_EVENT_SEPARATOR in buffer:
+                event, buffer = buffer.split(SSE_EVENT_SEPARATOR, 1)
                 for chunk in self._chunks_from_event(event):
                     yield chunk
         # Flush a trailing event if the stream did not end with a blank line.
@@ -200,7 +205,9 @@ class MistralSpeechSynthesizer:
 
         A ``speech.audio.done`` event carries no audio and is skipped (detected
         either from the ``event:`` name or the JSON ``type`` field, since Mistral
-        may express it either way).
+        may express it either way). Each ``data:`` line is parsed as a complete
+        JSON payload; multi-line ``data:`` fields are not joined, which matches
+        Mistral's one-JSON-per-event stream.
         """
         payloads: list[str] = []
         event_name: str | None = None

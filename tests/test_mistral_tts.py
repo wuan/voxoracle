@@ -320,6 +320,20 @@ def test_non_streaming_wav_returns_single_chunk() -> None:
     assert chunks[0].sample_rate == 16000
 
 
+def test_wav_chunk_rate_low_rate_wav_not_the_configured_default() -> None:
+    # A low-rate WAV header must win over the configured default (24 kHz), else
+    # SpeechPlayer would resample from a wrong label and play it too fast.
+    samples = np.arange(800, dtype=np.int16)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        encoded = base64.b64encode(wav_bytes(samples, sample_rate=8000)).decode()
+        return httpx.Response(200, json={"audio_data": encoded})
+
+    chunks = synthesize(handler, stream=False, response_format="wav")
+    assert chunks[0].sample_rate == 8000
+    assert chunks[0].sample_rate != DEFAULT_SAMPLE_RATE
+
+
 # --- malformed responses ------------------------------------------------------
 
 
@@ -740,6 +754,29 @@ def test_barge_in_cancels_a_stalled_stream_promptly() -> None:
     assert synth.closed  # the in-flight provider stream was cancelled
     assert output.stopped
     assert len(output.written) == 1
+
+
+class RaisingSynthesizer:
+    """Yields one chunk, then raises, to exercise speak()'s cleanup path."""
+
+    async def _gen(self) -> AsyncIterator[SpeechChunk]:
+        yield SpeechChunk(samples=np.zeros(2, dtype=np.int16), sample_rate=SAMPLE_RATE)
+        raise MistralResponseError("boom")
+
+    def synthesize(self, text: str, *, voice: str | None = None) -> AsyncIterator[SpeechChunk]:
+        return self._gen()
+
+
+def test_speak_clears_stop_event_after_failure() -> None:
+    # After a mid-stream failure, interrupt() must not touch a stale stop event.
+    synth = RaisingSynthesizer()
+    player = SpeechPlayer(synth, FakeOutput())
+
+    with pytest.raises(MistralResponseError):
+        run(player.speak("Hallo"))
+
+    assert player._stop is None
+    player.interrupt()  # must not raise on the cleared state
 
 
 def test_barge_in_cancels_mid_stream() -> None:

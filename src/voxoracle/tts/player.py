@@ -72,16 +72,19 @@ class SpeechPlayer:
         self._interrupted = False
         self._stop = asyncio.Event()
         target_rate = self._output.sample_rate
-        async with aclosing(self._synthesizer.synthesize(text, voice=voice)) as stream:
-            while not self._interrupted:
-                chunk = await self._next_chunk(stream)
-                if chunk is None:
-                    break
-                samples = resample(chunk.samples, chunk.sample_rate, target_rate)
-                await asyncio.to_thread(self._output.write, samples)
-        if self._interrupted:
-            self._output.stop()
-        self._stop = None
+        try:
+            async with aclosing(self._synthesizer.synthesize(text, voice=voice)) as stream:
+                while not self._interrupted:
+                    chunk = await self._next_chunk(stream)
+                    if chunk is None:
+                        break
+                    samples = resample(chunk.samples, chunk.sample_rate, target_rate)
+                    await asyncio.to_thread(self._output.write, samples)
+            if self._interrupted:
+                self._output.stop()
+        finally:
+            # Always drop the stop event so interrupt() cannot touch a stale one.
+            self._stop = None
 
     async def _next_chunk(self, stream: AsyncGenerator[SpeechChunk]) -> SpeechChunk | None:
         """Return the next chunk, or ``None`` at end of stream or on interrupt.
@@ -95,6 +98,9 @@ class SpeechPlayer:
         stop = asyncio.ensure_future(self._stop.wait())
         done, _ = await asyncio.wait({next_chunk, stop}, return_when=asyncio.FIRST_COMPLETED)
         if stop in done and self._interrupted:
+            # Barge-in wins: abandon the in-flight fetch. If the fetch had already
+            # produced a chunk (or raised), it is intentionally discarded here -
+            # the user interrupted, so a late chunk or its error is not surfaced.
             next_chunk.cancel()
             await asyncio.gather(next_chunk, return_exceptions=True)
             return None
