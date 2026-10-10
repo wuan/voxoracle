@@ -169,8 +169,8 @@ stt:
 tts:
   provider: mistral            # Cloud text-to-speech provider
   model: voxtral-mini-tts-2603 # Voxtral speech synthesis
-  language: de
-  voice: de                    # German voice (confirmed on-device in WP7)
+  language: de                 # Also selects the default voice when voice is null
+  voice: null                  # null -> German default from language
   sample_rate: 24000           # Provider PCM rate in Hz (confirmed in WP7)
 
 session:

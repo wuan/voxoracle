@@ -68,8 +68,10 @@ class TTSSettings(BaseModel):
     provider: str = "mistral"
     model: str = "voxtral-mini-tts-2603"
     language: str = "de"
-    # German voice id sent to the provider; WP7 confirms the exact preset on-device.
-    voice: str = "de"
+    # Voice id sent to the provider. None selects the default voice from the
+    # configured language (German), so a config with ``voice: null`` stays valid;
+    # WP7 confirms the exact preset on-device.
+    voice: str | None = None
     # Sample rate of the provider's PCM output in Hz. Mistral does not publish it,
     # so it is configurable and confirmed on-device in WP7; the output layer
     # resamples this to the device rate.

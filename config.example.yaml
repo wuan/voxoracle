@@ -65,11 +65,12 @@ tts:
   provider: mistral
   # Speech-synthesis model.
   model: voxtral-mini-tts-2603
-  # BCP-47 language tag; German first.
+  # BCP-47 language tag; German first. Also selects the default voice when voice
+  # is null (Mistral has no language field and picks the voice by voice_id).
   language: de
-  # Provider voice id; "de" is the German default and is confirmed on-device
-  # during WP7 (set an explicit voice id if the preset differs).
-  voice: de
+  # Provider voice id; null uses the German default from the language above.
+  # Confirmed on-device during WP7 (set an explicit voice id if it differs).
+  voice: null
   # Sample rate (Hz) of the provider's PCM audio. Mistral does not publish it;
   # correct it here if the device plays at the wrong speed (confirmed in WP7).
   sample_rate: 24000

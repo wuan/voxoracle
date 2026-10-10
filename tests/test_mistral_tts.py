@@ -858,8 +858,18 @@ def test_tts_defaults_are_mistral_german(tmp_path, monkeypatch) -> None:
     assert settings.tts.provider == "mistral"
     assert settings.tts.model == "voxtral-mini-tts-2603"
     assert settings.tts.language == "de"
-    assert settings.tts.voice == "de"
+    # voice is unset by default; the synthesizer derives the German voice from
+    # the language, so a config with voice: null remains valid.
+    assert settings.tts.voice is None
     assert settings.tts.sample_rate == 24000
+
+
+def test_tts_voice_null_is_accepted(tmp_path, monkeypatch) -> None:
+    # An existing config.yaml copied from the shipped example has voice: null.
+    monkeypatch.chdir(tmp_path)
+    config = tmp_path / "config.yaml"
+    config.write_text("tts:\n  voice: null\n", encoding="utf-8")
+    assert load_settings(config).tts.voice is None
 
 
 def test_tts_voice_configurable(tmp_path, monkeypatch) -> None:

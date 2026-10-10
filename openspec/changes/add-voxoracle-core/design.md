@@ -113,7 +113,8 @@ utterance as a 16-bit mono WAV multipart form with a `language` field
 
 TTS (WP5) uses the Voxtral speech-synthesis endpoint
 (`POST https://api.mistral.ai/v1/audio/speech`, model `voxtral-mini-tts-2603`),
-sending `input`, `voice_id` (default `de`), `response_format` (`pcm`) and
+sending `input`, `voice_id` (the configured voice, or the German default derived
+from `tts.language` when `tts.voice` is null), `response_format` (`pcm`) and
 `stream=true`. With streaming, Mistral answers with a `text/event-stream` whose
 `data:` frames carry `speech.audio.delta` events (`{"audio_data": "<base64>"}`)
 terminated by `speech.audio.done`; the vendor's `pcm` format is raw
