@@ -46,10 +46,10 @@
 
 ## 6. WP5 — Cloud text-to-speech
 
-- [ ] 6.1 Define the provider-agnostic `TTS` protocol (text in, audio out)
-- [ ] 6.2 Implement a configurable cloud TTS backend with a German voice
-- [ ] 6.3 Add streaming playback and barge-in support
-- [ ] 6.4 Verify German answer text with a mocked provider and confirm barge-in stops playback
+- [x] 6.1 Define the provider-agnostic `TTS` protocol (text in, audio out)
+- [x] 6.2 Implement a configurable cloud TTS backend with a German voice
+- [x] 6.3 Add streaming playback and barge-in support
+- [x] 6.4 Verify German answer text with a mocked provider and confirm barge-in stops playback
 
 ## 7. WP6 — Voice session state machine
 

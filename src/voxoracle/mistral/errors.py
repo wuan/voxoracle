@@ -32,9 +32,10 @@ class MistralAuthError(MistralError):
 class MistralRateLimitError(MistralError):
     """Mistral rate-limited the request (HTTP 429)."""
 
-    def __init__(self, body: str) -> None:
+    def __init__(self, status_code: int, body: str) -> None:
+        self.status_code = status_code
         self.body = body
-        super().__init__(f"Mistral rate limit exceeded (HTTP 429): {body[:200]}")
+        super().__init__(f"Mistral rate limit exceeded (HTTP {status_code}): {body[:200]}")
 
 
 class MistralServerError(MistralError):

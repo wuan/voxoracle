@@ -128,6 +128,8 @@ def test_mistral_api_key_env_wins_over_config(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     config = tmp_path / "config.yaml"
     config.write_text("mistral:\n  api_key: from-config\n", encoding="utf-8")
+    monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
     monkeypatch.setenv("VXORACLE_MISTRAL__API_KEY", "from-env")
     assert resolve_mistral_api_key(load_settings(config)) == "from-env"
 

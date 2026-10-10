@@ -66,8 +66,10 @@ class STTSettings(BaseModel):
 
 class TTSSettings(BaseModel):
     provider: str = "mistral"
+    model: str = "voxtral-mini-tts-2603"
     language: str = "de"
-    voice: str | None = None
+    # German voice id sent to the provider; WP7 confirms the exact preset on-device.
+    voice: str = "de"
 
 
 class SessionSettings(BaseModel):

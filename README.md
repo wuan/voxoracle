@@ -168,8 +168,9 @@ stt:
 
 tts:
   provider: mistral            # Cloud text-to-speech provider
+  model: voxtral-mini-tts-2603 # Voxtral speech synthesis
   language: de
-  voice: null
+  voice: de                    # German voice (confirmed on-device in WP7)
 
 session:
   max_record_seconds: 15       # Maximum length of a spoken question
