@@ -1154,6 +1154,35 @@ def test_repeat_interrupt_does_not_reabort_the_output() -> None:
     assert output.aborted
 
 
+def test_interrupt_swallows_an_output_abort_failure() -> None:
+    # The abort runs from the wake-word callback; an erroring speaker device
+    # must not propagate, and the output must still be restarted next time.
+    class ErroringAbortOutput(FakeOutput):
+        def abort(self) -> None:
+            raise RuntimeError("speaker vanished")
+
+        def write(self, samples: np.ndarray) -> None:
+            self.written.append(samples)
+
+    synth = FakeSynthesizer([np.zeros(10, dtype=np.int16) for _ in range(2)])
+    output = ErroringAbortOutput()
+    player = SpeechPlayer(synth, output)
+
+    async def scenario() -> None:
+        speak_task = asyncio.create_task(player.speak("Ein langer Satz"))
+        while not output.written:
+            await asyncio.sleep(0)
+        player.interrupt()  # abort() raises; must be swallowed
+        await asyncio.wait_for(speak_task, timeout=1.0)
+        # The output is still restarted for the next utterance despite the error.
+        await player.speak("Zweite Frage")
+
+    run(scenario())  # must not raise
+
+    assert player.interrupted is False  # reset by the second speak
+    assert output.started >= 1
+
+
 def test_play_does_not_reabort_after_interrupt() -> None:
     # interrupt() aborts the output; _play's slice loop must only stop, never
     # abort a second time. Here the in-flight write succeeds (a host where a

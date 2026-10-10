@@ -85,21 +85,27 @@ class SpeechPlayer:
         """Abort the output, discarding buffered audio.
 
         Idempotent: a repeat call (a second :meth:`interrupt` while :meth:`speak`
-        winds down) is a no-op, so we never abort an already-stopped stream -
-        ``Pa_AbortStream`` on a stopped stream may raise on some hosts. Prefers
-        the protocol's :meth:`~voxoracle.audio.protocols.AudioOutput.abort`
-        (``Pa_AbortStream``: discards the buffer) and falls back to ``stop`` for
-        simpler sinks that only drain. Records that the output must be restarted
-        before it plays again.
+        winds down) is a no-op, so we never abort an already-stopped stream.
+        Prefers the protocol's
+        :meth:`~voxoracle.audio.protocols.AudioOutput.abort` (``Pa_AbortStream``:
+        discards the buffer) and falls back to ``stop`` for simpler sinks that
+        only drain. Any failure is logged rather than raised: this runs from the
+        barge-in hook (the wake-word callback), where an erroring speaker device
+        must not propagate. The output is still marked aborted so the next
+        :meth:`speak` restarts it.
         """
         if self._output_aborted:
             return
-        abort = getattr(self._output, "abort", None)
-        if callable(abort):
-            abort()
-        else:  # pragma: no cover - every real output implements abort
-            self._output.stop()
-        self._output_aborted = True
+        try:
+            abort = getattr(self._output, "abort", None)
+            if callable(abort):
+                abort()
+            else:  # pragma: no cover - every real output implements abort
+                self._output.stop()
+        except Exception:
+            _LOGGER.debug("failed to abort the audio output", exc_info=True)
+        finally:
+            self._output_aborted = True
 
     def _resume_output(self) -> None:
         """Restart the output after an abort, so the next utterance plays."""
