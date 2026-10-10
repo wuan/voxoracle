@@ -1,7 +1,10 @@
 [Unit]
 Description=VoxOracle voice appliance (wake word -> STT -> DocOracle /ask -> TTS)
 Documentation=https://github.com/wuan/voxoracle
-After=network-online.target sound.target
+# network-online.target/sound.target are system units; the per-user manager
+# ignores them, but naming them is harmless there and correct in the system
+# manager. network-online.target is pulled in by Wants so ordering works.
+After=network-online.target
 Wants=network-online.target
 # Bound the fail-fast retry loop while `run` is still a stub (WP6).
 StartLimitIntervalSec=300
@@ -28,4 +31,7 @@ StandardOutput=journal
 StandardError=journal
 
 [Install]
-WantedBy=multi-user.target
+# default.target resolves in both the system manager (-> multi-user.target) and
+# the per-user manager, so `enable` links the unit where it actually starts on
+# boot in either scope.
+WantedBy=default.target

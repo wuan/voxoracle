@@ -108,6 +108,16 @@ else
   install -m 0644 "$rendered" "$UNIT_DIR/$SERVICE_NAME.service"
   systemctl --user daemon-reload
   systemctl --user enable --now "$SERVICE_NAME"
+  # A user service only runs while the user has a session unless lingering is
+  # enabled; enable it (best-effort) so the appliance starts on boot without a
+  # login. Needs root, so it is skipped when unavailable.
+  if command -v loginctl >/dev/null 2>&1; then
+    if loginctl enable-linger "$(id -un)" 2>/dev/null; then
+      log "Enabled user lingering (starts on boot without a login)"
+    else
+      log "Could not enable lingering; run: sudo loginctl enable-linger $(id -un)"
+    fi
+  fi
 fi
 
 # --- 6. Next steps ----------------------------------------------------------
@@ -128,3 +138,7 @@ Next steps:
   3. Run:  $INSTALL_DIR/.venv/bin/voxoracle doctor
   4. Logs: $([ "$SCOPE" = system ] && echo "sudo journalctl -u $SERVICE_NAME -f" || echo "journalctl --user -u $SERVICE_NAME -f")
 EOF
+
+if [ "$SCOPE" = "user" ]; then
+  echo "  5. User service: ensure it starts on boot with: sudo loginctl enable-linger $(id -un)"
+fi

@@ -197,6 +197,9 @@ sudo journalctl -u voxoracle -f
 # User service (no sudo):
 systemctl --user status voxoracle
 journalctl --user -u voxoracle -f
+# A user service only runs while you have a session; enable lingering so it
+# starts on boot without a login (install.sh attempts this automatically):
+sudo loginctl enable-linger "$USER"
 ```
 
 ### Verify with doctor
